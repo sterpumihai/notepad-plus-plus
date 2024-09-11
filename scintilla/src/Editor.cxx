@@ -8232,6 +8232,7 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 	case Message::DelLineLeft:
 	case Message::DelLineRight:
 	case Message::LineCopy:
+	case Message::LineCopyNoNL:
 	case Message::LineCut:
 	case Message::LineDelete:
 	case Message::LineTranspose:
