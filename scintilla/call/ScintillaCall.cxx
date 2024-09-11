@@ -2119,6 +2119,10 @@ void ScintillaCall::LineCopy() {
 	Call(Message::LineCopy);
 }
 
+void ScintillaCall::LineCopyNoNL() {
+	Call(Message::LineCopyNoNL);
+}
+
 void ScintillaCall::MoveCaretInsideView() {
 	Call(Message::MoveCaretInsideView);
 }

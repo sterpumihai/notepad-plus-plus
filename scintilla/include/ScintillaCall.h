@@ -575,6 +575,7 @@ public:
 	void VCHomeWrap();
 	void VCHomeWrapExtend();
 	void LineCopy();
+	void LineCopyNoNL();
 	void MoveCaretInsideView();
 	Position LineLength(Line line);
 	void BraceHighlight(Position posA, Position posB);
