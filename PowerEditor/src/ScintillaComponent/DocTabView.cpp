@@ -15,26 +15,34 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
-
 #include "DocTabView.h"
+
+#include <cwchar>
+
+#include "Buffer.h"
+#include "NppConstants.h"
+#include "Parameters.h"
 #include "ScintillaEditView.h"
+#include "TabBar.h"
+#include "Windows.h"
+#include "resource.h"
 
-#ifndef _WIN32_IE
-#define _WIN32_IE	0x0600
-#endif //_WIN32_IE
-
-bool DocTabView::_hideTabBarStatus = false;
-
-
-int docTabIconIDs[] = { IDI_SAVED_ICON,  IDI_UNSAVED_ICON,  IDI_READONLY_ICON,  IDI_MONITORING_ICON };
-int docTabIconIDs_darkMode[] = { IDI_SAVED_DM_ICON,  IDI_UNSAVED_DM_ICON,  IDI_READONLY_DM_ICON,  IDI_MONITORING_DM_ICON };
-int docTabIconIDs_alt[] = { IDI_SAVED_ALT_ICON, IDI_UNSAVED_ALT_ICON, IDI_READONLY_ALT_ICON, IDI_MONITORING_ICON };
-
-
-
-void DocTabView::init(HINSTANCE hInst, HWND parent, ScintillaEditView* pView, unsigned char indexChoice)
+enum ImgIdx
 {
-	TabBarPlus::init(hInst, parent);
+	SAVED_IMG_INDEX,
+	UNSAVED_IMG_INDEX,
+	REDONLY_IMG_INDEX,
+	REDONLYSYS_IMG_INDEX,
+	MONITORING_IMG_INDEX,
+};
+
+static constexpr int docTabIconIDs[] = { IDI_SAVED_ICON, IDI_UNSAVED_ICON, IDI_READONLY_ICON, IDI_READONLYSYS_ICON, IDI_MONITORING_ICON };
+static constexpr int docTabIconIDs_darkMode[] = { IDI_SAVED_DM_ICON, IDI_UNSAVED_DM_ICON, IDI_READONLY_DM_ICON, IDI_READONLYSYS_DM_ICON, IDI_MONITORING_DM_ICON };
+static constexpr int docTabIconIDs_alt[] = { IDI_SAVED_ALT_ICON, IDI_UNSAVED_ALT_ICON, IDI_READONLY_ALT_ICON, IDI_READONLYSYS_ALT_ICON, IDI_MONITORING_ICON };
+
+void DocTabView::init(HINSTANCE hInst, HWND parent, ScintillaEditView* pView, unsigned char indexChoice, unsigned char buttonsStatus)
+{
+	TabBarPlus::init(hInst, parent, false, false, buttonsStatus);
 	_pView = pView;
 
 	createIconSets();
@@ -76,7 +84,7 @@ void DocTabView::addBuffer(BufferID buffer)
 	if (_hasImgLst)
 		index = 0;
 	tie.iImage = index;
-	tie.pszText = const_cast<wchar_t *>(buf->getFileName());
+	tie.pszText = const_cast<wchar_t*>(buf->getCompactFileName());
 	tie.lParam = reinterpret_cast<LPARAM>(buffer);
 	::SendMessage(_hSelf, TCM_INSERTITEM, _nbItem++, reinterpret_cast<LPARAM>(&tie));
 	bufferUpdated(buf, BufferChangeMask);
@@ -99,6 +107,9 @@ void DocTabView::setIndividualTabColour(BufferID bufferId, int colorId)
 int DocTabView::getIndividualTabColourId(int tabIndex)
 {
 	BufferID bufferId = getBufferByIndex(tabIndex);
+	if (!bufferId)
+		return -1;
+
 	return bufferId->getDocColorId();
 }
 
@@ -130,7 +141,7 @@ BufferID DocTabView::findBufferByName(const wchar_t * fullfilename) //-1 if not 
 		::SendMessage(_hSelf, TCM_GETITEM, i, reinterpret_cast<LPARAM>(&tie));
 		BufferID id = reinterpret_cast<BufferID>(tie.lParam);
 		const Buffer* buf = MainFileManager.getBufferByID(id);
-		if (wcsicmp(fullfilename, buf->getFullPathName()) == 0)
+		if (_wcsicmp(fullfilename, buf->getFullPathName()) == 0)
 		{
 			return id;
 		}
@@ -183,7 +194,11 @@ void DocTabView::bufferUpdated(Buffer * buffer, int mask)
 		{
 			tie.iImage = MONITORING_IMG_INDEX;
 		}
-		else if (buffer->isReadOnly())
+		else if (buffer->getFileReadOnly())
+		{
+			tie.iImage = REDONLYSYS_IMG_INDEX;
+		}
+		else if (buffer->getUserReadOnly())
 		{
 			tie.iImage = REDONLY_IMG_INDEX;
 		}
@@ -198,7 +213,7 @@ void DocTabView::bufferUpdated(Buffer * buffer, int mask)
 		tie.pszText = encodedLabel;
 
 		{
-			const wchar_t* in = buffer->getFileName();
+			const wchar_t* in = buffer->getCompactFileName();
 			wchar_t* out = encodedLabel;
 
 			//This code will read in one character at a time and duplicate every first ampersand(&).
@@ -246,8 +261,10 @@ void DocTabView::setBuffer(size_t index, BufferID id)
 
 void DocTabView::reSizeTo(RECT & rc)
 {
-	int borderWidth = ((NppParameters::getInstance()).getSVP())._borderWidth;
-	if (_hideTabBarStatus)
+	NppParameters& nppParam = NppParameters::getInstance();
+	int borderWidth = nppParam.getSVP()._borderWidth;
+	NppGUI& nppGUI = nppParam.getNppGUI();
+	if (nppGUI._tabStatus & TAB_HIDE)
 	{
 		RECT rcTmp = rc;
 		TabBar::reSizeTo(rcTmp);

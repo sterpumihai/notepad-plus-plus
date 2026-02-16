@@ -5,7 +5,7 @@ Translation note:
 2. All the comments are for explanation, they are not for translation.
 -->
 <NotepadPlus>
-	<Native-Langue name="Français" filename="french.xml" version="8.6.8">
+	<Native-Langue name="Français" filename="french.xml" version="8.9">
 		<Menu>
 			<Main>
 				<!-- Main Menu Entries -->
@@ -93,6 +93,7 @@ Translation note:
 					<Item id="41003" name="Fermer"/>
 					<Item id="41004" name="Fermer tout"/>
 					<Item id="41005" name="Fermer tout sauf le document actuel"/>
+					<Item id="41026" name="Fermer tout sauf les documents épinglés"/>
 					<Item id="41009" name="Fermer tout à gauche"/>
 					<Item id="41018" name="Fermer tout à droite"/>
 					<Item id="41024" name="Fermer tous les documents non-modifiés"/>
@@ -193,14 +194,14 @@ Translation note:
 					<Item id="42025" name="Enregistrer la macro"/>
 					<Item id="42026" name="Texte de droite à gauche"/>
 					<Item id="42027" name="Texte de gauche à droite"/>
-					<Item id="42028" name="Lecture seule pour le document actuel"/>
+					<Item id="42028" name="Lecture seule dans Notepad++"/>
 					<Item id="42029" name="Copier le chemin complet du document actuel"/>
 					<Item id="42030" name="Copier le nom du document actuel"/>
 					<Item id="42031" name="Copier le dossier du document actuel"/>
 					<Item id="42087" name="Copier tous les noms des documents"/>
 					<Item id="42088" name="Copier tous les dossiers des documents"/>
 					<Item id="42032" name="Exécuter une macro en boucle..."/>
-					<Item id="42033" name="Enlever l’attribut de lecture seule du fichier"/>
+					<Item id="42033" name="Attribut de lecture seule du fichier"/>
 					<Item id="42035" name="Commenter (mode ligne)"/>
 					<Item id="42036" name="Décommenter (mode ligne)"/>
 					<Item id="42055" name="Enlever les lignes vides"/>
@@ -413,15 +414,19 @@ Translation note:
 					<Item id="11007" name="Type de Z à A"/>
 					<Item id="11008" name="Taille de +petite à +grande"/>
 					<Item id="11009" name="Taille de +grande à +petite"/>
+					<Item id="11010" name="Heure de modification de +ancienne à +récente"/>
+					<Item id="11011" name="Heure de modification de +récente à +ancienne"/>
 				</Commands>
 			</Main>
 			<TabBar>
 				<Item CMDID="41003" name="Fermer"/>
 				<Item CMDID="0" name="Fermer plusieurs onglets"/>
-				<Item CMDID="41005" name="Fermer tout sauf ce fichier"/>
+				<Item CMDID="41005" name="Fermer tout sauf ce document"/>
+				<Item CMDID="41026" name="Fermer tout sauf les documents épinglés"/>
 				<Item CMDID="41009" name="Fermer les onglets sur la gauche"/>
 				<Item CMDID="41018" name="Fermer les onglets sur la droite"/>
 				<Item CMDID="41024" name="Fermer tous les documents non-modifiés"/>
+				<Item CMDID="44048" name="Epingler l’onglet" alternativeName="Désépingler l’onglet"/>
 				<Item CMDID="41006" name="Enregistrer"/>
 				<Item CMDID="41008" name="Enregistrer sous..."/>
 				<Item CMDID="1" name="Ouvrir dans"/>
@@ -433,8 +438,8 @@ Translation note:
 				<Item CMDID="41016" name="Supprimer le fichier actuel"/>
 				<Item CMDID="41014" name="Recharger"/>
 				<Item CMDID="41010" name="Imprimer"/>
-				<Item CMDID="42028" name="Lecture seule pour le document actuel"/>
-				<Item CMDID="42033" name="Enlever l’attribut de lecture seule du fichier"/>
+				<Item CMDID="42028" name="Lecture seule dans Notepad++"/>
+				<Item CMDID="42033" name="Attribut de lecture seule du fichier"/>
 				<Item CMDID="2" name="Copier dans le presse-papiers"/>
 				<Item CMDID="42029" name="Copier le chemin complet du document actuel"/>
 				<Item CMDID="42030" name="Copier le nom du fichier actuel"/>
@@ -497,7 +502,6 @@ Translation note:
 				<Item id="1626" name="Mode étendu (\n, \r, \t, \0, \x...)"/>
 				<Item id="1660" name="Remplacer tout"/>
 				<Item id="1665" name="Remplacer tout"/>
-				<Item id="1661" name="Suivre le doc. courant"/>
 				<Item id="1662" name="Panneau de projet #1"/>
 				<Item id="1663" name="Panneau de projet #2"/>
 				<Item id="1664" name="Panneau de projet #3"/>
@@ -535,8 +539,8 @@ Translation note:
 			<GoToLine title="Aller à...">
 				<Item id="2007" name="Ligne"/>
 				<Item id="2008" name="Position"/>
-				<Item id="1" name="&amp;Zyva !"/>
-				<Item id="2" name="Je vais nulle part"/>
+				<Item id="1" name="&amp;Aller"/>
+				<Item id="2" name="Annuler"/>
 				<Item id="2004" name="Vous êtes ici :"/>
 				<Item id="2005" name="Vous allez à :"/>
 				<Item id="2006" name="Pas plus loin que :"/>
@@ -630,14 +634,16 @@ Translation note:
 					<Item id="2219" name="Mots-clés prédéfinis"/>
 					<Item id="2221" name="Mots-clés utilisateur"/>
 					<Item id="2225" name="Langage :"/>
-					<Item id="2226" name="Appliquer le premier plan global"/>
-					<Item id="2227" name="Appliquer l’arrière-plan global"/>
-					<Item id="2228" name="Appliquer la police globale"/>
-					<Item id="2229" name="Appliquer la taille globale"/>
-					<Item id="2230" name="Appliquer le style gras global"/>
-					<Item id="2231" name="Appliquer le style italique global"/>
-					<Item id="2232" name="Appliquer le style souligné global"/>
-					<Item id="2234" name="Aller à la boîte de dialogue Préférences"/>
+					<Item id="2226" name="Forcer 1er plan pour tous les styles"/>
+					<Item id="2227" name="Forcer arrière-plan pour tous les styles"/>
+					<Item id="2228" name="Forcer police pour tous les styles"/>
+					<Item id="2229" name="Forcer taille pour tous les styles"/>
+					<Item id="2230" name="Forcer style gras pour tous les styles"/>
+					<Item id="2231" name="Forcer italique pour tous les styles"/>
+					<Item id="2232" name="Forcer souligné pour tous les styles"/>
+					<Item id="2234" name="Accéder au paramètre"/>
+					<!-- Don't translate "Global override" -->
+					<Item id="2235" name="C'est quoi « Global override » ?"/>
 				</SubDialog>
 			</StyleConfig>
 
@@ -818,6 +824,7 @@ Translation note:
 				<Folder title="Relief syntaxique &amp;&amp; défaut">
 					<Item id="21101" name="Style par défaut"/>
 					<Item id="21102" name="Style"/>
+					<Item id="21103" name="Aide en ligne de Langage utilisateur"/>
 					<Item id="21105" name="Documentation"/>
 					<Item id="21106" name="Compacter le relief (pliage des lignes vides)"/>
 					<Item id="21220" name="Relief syntaxique mode 1"/>
@@ -941,7 +948,15 @@ Translation note:
 			<Preference title="Préférences">
 				<Item id="6001" name="Fermer"/>
 				<Global title="Général">
-					<Item id="6101" name="Barre d’outils"/>
+					<Item id="6123" name="Langue"/>
+					<Item id="6131" name="Menu"/>
+					<Item id="6122" name="Cacher (Alt ou F10 pour basculer)"/>
+					<Item id="6132" name="Cacher ＋ ▼ ✕"/>
+					<Item id="6133" name="Barre d’état"/>
+					<Item id="6134" name="Masquer"/>
+				</Global>
+
+				<Toolbar title="Barre d’outils">
 					<Item id="6102" name="Cacher"/>
 					<Item id="6103" name="Icônes ajourées (petite)"/>
 					<Item id="6104" name="Icônes ajourées (grande)"/>
@@ -949,28 +964,41 @@ Translation note:
 					<Item id="6130" name="Icônes pleines (grande)"/>
 					<Item id="6105" name="Icônes standard (petite)"/>
 
-					<Item id="6106" name="Barre d’onglets"/>
+					<Item id="6011" name="Colorisation"/>
+					<Item id="6012" name="Complèt"/>
+					<Item id="6013" name="Partiel"/>
+					<Item id="6014" name="Choix de couleur"/>
+					<Item id="6015" name="Défaut"/>
+					<Item id="6016" name="Rouge"/>
+					<Item id="6017" name="Vert"/>
+					<Item id="6018" name="Bleu"/>
+					<Item id="6019" name="Violet"/>
+					<Item id="6020" name="Cyan"/>
+					<Item id="6021" name="Olive"/>
+					<Item id="6022" name="Jaune"/>
+					<Item id="6023" name="Couleur d'accentuation"/>
+					<Item id="6024" name="Personaliser"/>
+				</Toolbar>
+
+				<Tabbar title="Barre d’onglets">
 					<Item id="6107" name="Réduire la taille"/>
 					<Item id="6108" name="Verrouiller (pas de glisser-déposer)"/>
 					<Item id="6109" name="Colorer les onglets inactifs"/>
 					<Item id="6110" name="Barre colorée sur l’onglet actif"/>
-					<Item id="6112" name="Bouton de fermeture sur chaque onglet"/>
+					<Item id="6111" name="Afficher les boutons sur les onglets inactifs"/>
+					<Item id="6112" name="Activer bouton de fermeture"/>
 					<Item id="6113" name="Fermer l’onglet par double clic"/>
+					<Item id="6115" name="Activer l’option épingler l’onglet"/>
+					<Item id="6135" name="Afficher uniquement le bouton épinglé"/>
 					<Item id="6118" name="Cacher"/>
 					<Item id="6119" name="Multiligne"/>
 					<Item id="6120" name="Verticale"/>
 					<Item id="6121" name="Quitter lors de la fermeture du dernier onglet"/>
 					<Item id="6128" name="Icônes alternatives"/>
-
-					<Item id="6133" name="Barre d’état"/>
-					<Item id="6134" name="Masquer"/>
-
-					<Item id="6131" name="Menu"/>
-					<Item id="6122" name="Cacher (Alt ou F10 pour basculer)"/>
-					<Item id="6132" name="Cacher ＋ ▼ ✕ depuis le menu (nécessité de redémarrage)"/>
-
-					<Item id="6123" name="Langue"/>
-				</Global>
+					<Item id="6125" name="Comportement"/>
+					<Item id="6126" name="Aspect visuel"/>
+					<Item id="6136" name="Taille max. du libellé d'onglet :"/>
+				</Tabbar>
 
 				<Scintillas title="Zones d’édition 1">
 					<Item id="6216" name="Curseur"/>
@@ -989,6 +1017,7 @@ Translation note:
 					<Item id="6239" name="Conserver la sélection lors d’un clic droit en dehors de la sélection"/>
 					<Item id="6245" name="Activer l’espace virtuel"/>
 					<Item id="6214" name="Activer copier/couper la ligne sans sélection"/>
+					<Item id="6225" name="Appliquer la couleur personnalisée au premier plan du texte sélectionné"/>
 					<Item id="6651" name="Surligner la ligne courante"/>
 					<Item id="6652" name="Aucun"/>
 					<Item id="6653" name="Colorer l’arrière-plan"/>
@@ -1025,10 +1054,10 @@ Translation note:
 					<Item id="7108" name="cyan"/>
 					<Item id="7109" name="olive"/>
 					<Item id="7115" name="Personnaliser"/>
-					<Item id="7116" name="Haut"/>
-					<Item id="7117" name="Surbrillance (menu)"/>
-					<Item id="7118" name="Activé"/>
-					<Item id="7119" name="Principale"/>
+					<Item id="7116" name="Arrière-plan de contenu"/>
+					<Item id="7117" name="Surbrillance"/>
+					<Item id="7118" name="Arrière-plan de contrôle"/>
+					<Item id="7119" name="Arrière-plan de dialogue"/>
 					<Item id="7120" name="Erreur"/>
 					<Item id="7121" name="Texte"/>
 					<Item id="7122" name="Texte plus sombre"/>
@@ -1096,6 +1125,7 @@ Translation note:
 					<Item id="4010" name="Extensions associées :"/>
 				</FileAssoc>
 
+
 				<Language title="Langage">
 					<Item id="6505" name="Langages disponibles"/>
 					<Item id="6506" name="Langages cachés"/>
@@ -1115,6 +1145,7 @@ Translation note:
 					<Item id="6310" name="Indenter par :"/>
 					<Item id="6311" name="Caractère de tabulation"/>
 					<Item id="6510" name="Utiliser la valeur par défaut"/>
+					<Item id="6512" name="Retour arrière désindente au lieu de supprimer un espace seul"/>
 				</Indentation>
 
 				<Highlighting title="Coloration">
@@ -1183,6 +1214,8 @@ Translation note:
 					<Item id="6908" name="Remplir le champ de recherche avec le texte sélectionné"/>
 					<Item id="6909" name="Sélectionner le mot sous le curseur si rien n’est sélectionné"/>
 					<Item id="6910" name="Taille minimale pour l’auto-coche de « Dans la sélection » :"/>
+					<Item id="6913" name="Remplir le champ de &quot;Dossier&quot; de &quot;Recherche dans les fichiers&quot; avec chemin du fichier actif"/>
+					<Item id="6916" name=" : Nombre max. de caractères sélectionnés à copier dans le champ de recherche"/>
 				</Searching>
 
 				<RecentFilesHistory title="Fichiers récents">
@@ -1213,7 +1246,6 @@ Translation note:
 				</Backup>
 
 				<AutoCompletion title="Autocomplétion">
-					<Item id="6115" name="Indentation automatique"/>
 					<Item id="6807" name="Autocomplétion"/>
 					<Item id="6808" name="Activer la complétion automatique"/>
 					<Item id="6809" name="Complétion de fonction"/>
@@ -1309,16 +1341,34 @@ Translation note:
 						<Element name="Activer avec tous les onglets"/>
 						<Element name="Désactiver"/>
 					</ComboBox>
-					<Item id="6308" name="Réduire dans la barre de notifications"/>
+					<ComboBox id="6307">
+						<Element name="Pas d'action dans"/>
+						<Element name="Réduire dans"/>
+						<Element name="Fermer dans"/>
+						<Element name="Réduire / Fermer dans"/>
+					</ComboBox>
+					<ComboBox id="6362">
+						<Element name="GDI (le plus compatible)"/>
+						<Element name="DirectWrite (défaut)"/>
+						<Element name="DirectWrite (mode de rétention)"/>
+						<Element name="DirectWrite (rendu sur GDI DC)"/>
+						<Element name="DirectWrite (DirectX 11)"/>
+					</ComboBox>
+					<ComboBox id="6364">
+						<Element name="Désactiver"/>
+						<Element name="Activer au démarage de Notepad++"/>
+						<Element name="Activer à la fermeture de Notepad++"/>
+					</ComboBox>
+					<Item id="6308" name="la barre de notifications"/>
+					<Item id="6363" name="mode de rendu"/>
+					<Item id="6365" name="Mise à jour automatique :"/>
 					<Item id="6312" name="Surveillance de l’état des fichiers"/>
 					<Item id="6313" name="Mise à jour sans alerte"/>
 					<Item id="6325" name="Aller à la dernière ligne après mise à jour"/>
 					<Item id="6322" name="Ext. fichier session :"/>
-					<Item id="6323" name="Activer la mise à jour automatique"/>
 					<Item id="6324" name="Commutateur de documents (Ctrl+Tab)"/>
 					<Item id="6331" name="Afficher seulement le nom du fichier dans la barre de titre"/>
 					<Item id="6334" name="Détecter l’encodage automatiquement"/>
-					<Item id="6349" name="Utiliser « DirectWrite » (il pourrait améliorer le rendu des caractères spéciaux. Nécessité de redémarrage)"/>
 					<Item id="6337" name="Ext. fichier espace de travail :"/>
 					<Item id="6114" name="Activer"/>
 					<Item id="6117" name="Activer la liste de MRU"/>
@@ -1344,7 +1394,6 @@ Translation note:
 				<Item id="7003" name="Fermer fenêtres"/>
 				<Item id="7004" name="Trier les onglets"/>
 			</Window>
-
 			<ColumnEditor title="Édition en colonnes">
 				<Item id="2023" name="&amp;Texte à insérer"/>
 				<Item id="2033" name="&amp;Nombre à insérer"/>
@@ -1390,12 +1439,16 @@ Translation note:
 				<Item id="1766" name="Voulez-vous vraiment enregistrer tous les documents modifiés ?
 
 Choisissez « Toujours Oui » si vous ne voulez plus répondre cette question.
-
 Vous pourrez réactiver cette boîte de dialogue dans les Préférences ultérieurement."/>
 				<Item id="6" name="&amp;Oui"/>
 				<Item id="7" name="&amp;Non"/>
 				<Item id="4" name="Toujours Oui"/>
 			</DoSaveAll><!-- HowToReproduce: Check the 'Enable Save All confirm dialog' checkbox in Preference->MISC, now click 'Save all' -->
+
+			<DebugInfo title="Informations de débogage">
+				<Item id="1752" name="&amp;Copier les informations de débogage dans le presse-papier"/>
+				<Item id="1" name="OK"/>
+			</DebugInfo>
 		</Dialog>
 		<MessageBox>
 			<!-- $INT_REPLACE$ and $STR_REPLACE$ are place holders, don't translate these place holders. -->
@@ -1437,7 +1490,6 @@ Il existe 3 façons d’activer le mode colonne :
 3. (Clavier ou Souris)
       Mettre le curseur à la position du début désiré du bloc de colonne, puis
        exécuter la commande « Début/fin de sélection en mode colonne » ;
-
       Déplacer le curseur à la position de fin désirée du bloc de colonne, puis
        exécuter la commande « Début/fin de sélection en mode colonne » à nouveau."/>
 			<BufferInvalidWarning title="Échec de sauvegarde" message="Échec de sauvegarde : le tampon des données de fichier est invalide."/><!-- HowToReproduce: this message prevents from system failure. It's hard to reproduce. -->
@@ -1497,9 +1549,14 @@ Il semble que le fichier à ouvrir n’appartient pas au projet."/>
 Voulez-vous continuer ?"/>
 			<UDLNewNameError title="Erreur UDL" message="Ce nom est utilisé par un autre langage,
 veuillez en donner un autre."/>
-			<UDLRemoveCurrentLang title="Supprimer la langage actuelle" message="Êtes-vous sûr de vouloir supprimer la langage actuelle ?"/>
+			<UDLRemoveCurrentLang title="Suppression du UDL actuel" message="Êtes-vous sûr de vouloir supprimer le langage actuel ?"/>
+			<UDL_importSuccessful title="UDL" message="Importation réussie."/>
+			<UDL_importFails title="UDL" message="Échec de l'importation."/>
+			<UDL_saveBeforeImport title="UDL" message="Avant d'une exportation, enregistrez votre définition de langage en cliquant sur le bouton « Enregistrer sous... »."/>
+			<UDL_exportSuccessful title="UDL" message="Exportation réussie."/>
+			<UDL_exportFails title="UDL" message="Échec de l'exportation."/>
 			<SCMapperDoDeleteOrNot title="Supprimer un raccourci clavier" message="Êtes-vous sûr de vouloir supprimer ce raccourci clavier ?"/>
-			<FindCharRangeValueError title="Valeur en dehors des limites" message="Veuillez entrer une valeur entre 0 et 255."/>
+			<FindCharRangeValueError title="Valeur en dehors des limites" message="Veuillez entrer une valeur entre 0 et 255."/> <!-- HowToReproduce: Search menu, then Find characters in range, select Custom range, enter 999 in either edit box, press Find. -->
 			<OpenInAdminMode title="L’enregistrement a échoué" message="Le fichier ne peut pas être enregistré et il est peut-être protégé.
 Voulez-vous lancer Notepad++ en mode « Administrateur » ?"/>
 			<OpenInAdminModeWithoutCloseCurrent title="L’enregistrement a échoué" message="Le fichier ne peut pas être enregistré et il est peut-être protégé.
@@ -1539,6 +1596,11 @@ REMARQUE : Si vous choisissez de ne pas créer d’espaces réservés ou de les 
 Appuyez sur le bouton OK pour ouvrir la boîte de dialogue de recherche ou lui donner la priorité.
 
 Si vous avez besoin de la fonction de recherche d’expression régulière inversée, consultez le manuel de l’utilisateur pour savoir comment l’activer."/>
+			<PrintError title="0" message="Impossible de démarrer l'imprimante de document."/><!-- Use title="0" to use Windows OS default translated "Error" title. -->
+			<FindAutoChangeOfInSelectionWarning title="Avertissement de recherche" message="L'état de laa case à cocher &quot;Dans la sélection&quot; a été automatiquement modifié.
+Veuillez vérifier la condition de recherche avant de procéder à l'action."/> <!-- HowToReproduce: https://github.com/notepad-plus-plus/notepad-plus-plus/issues/14897#issuecomment-2564316224 -->
+			<Need2Restart2ShowMenuShortcuts title="Redémarrer Notepad++" message="Vous avez besoins de redémarrer Notepad++ afin d'afficher menu ＋ ▼ ✕ "/>
+			<NoAdminRight2ChangeReadOnlyFileAttribute title="Impossible de modifier l'attribut lecture seule" message="Veuillez lancer Notepad++ en mode « Administrateur » pour modifier cet attribut du fichier."/>
 		</MessageBox>
 		<ClipboardHistory>
 			<PanelTitle name="Historique du presse-papier"/>
@@ -1555,6 +1617,7 @@ Si vous avez besoin de la fonction de recherche d’expression régulière inver
 			<ColumnPath name="Chemin"/>
 			<ColumnType name="Type"/>
 			<ColumnSize name="Taille"/>
+			<ColumnDateTime name="Heure de modification"/>
 			<NbDocsTotal name="nombre de documents :"/>
 			<MenuCopyName name="Copier le(s) nom(s)"/>
 			<MenuCopyPath name="Copier le(s) chemin(s) complet(s)"/>
@@ -1674,8 +1737,9 @@ Rechercher dans tous les fichiers mais pas dans les dossiers tests, bin &amp;&am
 Rechercher dans tous les fichiers mais pas dans les dossiers log ou logs récursivement:
 *.* !+\log*"/><!-- HowToReproduce: Tip of mouse hovered on "Filters" label in "Find in Files" section of Find dialog. -->
 			<find-in-files-select-folder value="Sélectionner un dossier pour rechercher à l’intérieur"/><!-- HowToReproduce: Search > Find in Files > [...] -->
-			<find-status-top-reached value="Rechercher : La 1ère occurrence a été trouvée depuis le haut. Le début du document a été atteint"/>
-			<find-status-end-reached value="Rechercher : La dernière occurrence a été trouvée avant le bas. La fin du document a été atteinte"/>
+			<find-in-files-dir-from-active-doc-tip value="Remplir le champ Répertoire en se basant sur la document actif"/><!-- HowToReproduce: Search > Find in Files > [<<] -->
+			<find-status-top-reached value="Rechercher : Début du document atteint, 1ère occurrence trouvée depuis le bas."/>
+			<find-status-end-reached value="Rechercher : Fin du document atteinte, 1ère occurrence trouvée depuis le haut."/>
 			<find-status-replaceinfiles-1-replaced value="Remplacer dans les fichiers : 1 occurrence a été remplacée"/>
 			<find-status-replaceinfiles-nb-replaced value="Remplacer dans les fichiers : $INT_REPLACE$ occurrences ont été remplacées"/>
 			<find-status-replaceinopenedfiles-1-replaced value="Remplacer dans les fichiers ouverts : 1 occurrence a été remplacée"/>
@@ -1689,8 +1753,8 @@ Rechercher dans tous les fichiers mais pas dans les dossiers log ou logs récurs
 			<find-status-replaceall-1-replaced value="Remplacer tout : 1 occurrence a été remplacée"/>
 			<find-status-replaceall-nb-replaced value="Remplacer tout : $INT_REPLACE$ occurrences ont été remplacées"/>
 			<find-status-replaceall-readonly value="Remplacer tout : l’opération a échoué. Le fichier est en lecture seule"/>
-			<find-status-replace-end-reached value="Remplacer : La 1ère occurrence a été remplacée depuis le haut. La fin du document a été atteinte"/>
-			<find-status-replace-top-reached value="Remplacer : La 1ère occurrence a été remplacée depuis le bas. Le début du document a été atteint"/>
+			<find-status-replace-end-reached value="Remplacer : Fin du document atteinte, continuer depuis le début."/>
+			<find-status-replace-top-reached value="Remplacer : Début du document atteint, continuer depuis la fin."/>
 			<find-status-replaced-next-found value="Remplacer : 1 occurrence a été remplacée. L’occurrence suivante a été trouvée"/>
 			<find-status-replaced-without-continuing value="Remplacer : 1 occurrence a été remplacée."/>
 			<find-status-replaced-next-not-found value="Remplacer : 1 occurrence a été remplacée. L’occurrence suivante n’a pas été trouvée"/>
@@ -1702,14 +1766,17 @@ Rechercher dans tous les fichiers mais pas dans les dossiers log ou logs récurs
 			<find-status-scope-all value="dans le fichier"/>
 			<find-status-scope-backward value="du début du fichier au curseur"/>
 			<find-status-scope-forward value="du curseur à la fin du fichier"/>
+			<find-status-invisible-chars-findWhat value="Caractères invisibles dans le contenu collé de « Rechercher » ou « Remplacer par »"/>
+			<find-status-invisible-chars-findWhat-tip value="Avertissement : Caractères invisibles dans le champ de recherche (ou de remplacement).
+Le texte collé dans ce champ contient des caractères invisibles (peut-être des fins de ligne). Si vous continuez sans les supprimer, ils seront inclus dans le texte de recherche (ou de remplacement)."/>
 			<finder-find-in-finder value="Rechercher dans les résultats..."/>
 			<finder-close-this value="Fermer le dialogue des résultats"/>
 			<finder-collapse-all value="Replier tout"/>
 			<finder-uncollapse-all value="Déplier tout"/>
 			<finder-copy value="Copier la(les) ligne(s) sélectionnée(s)"/>
-			<finder-copy-paths value="Copier le(s) chemin(s)"/>
+			<finder-copy-selected-paths value="Copier le(s) chemin(s) sélectionné(s)"/>
 			<finder-clear-all value="Effacer tout"/>
-			<finder-open-all value="Ouvrir tout"/>
+			<finder-open-selected-paths value="Ouvrir le(s) chemin(s) sélectionné(s)"/>
 			<finder-purge-for-every-search value="Purger chaque recherche"/>
 			<finder-wrap-long-lines value="Retour à la ligne automatique"/>
 			<common-ok value="OK"/>
@@ -1801,13 +1868,36 @@ Cliquez sur le bouton « ? » à droite pour ouvrir le site web du manuel utilis
 			<!-- Don't translate "(&quot;Non-printing characters custom color&quot;)" -->
 			<npcCustomColor-tip value="Aller dans le Configurateur de style pour changer la couleur personnalisée par défaut pour la sélection des caractères blancs et des caractères non-imprimables (« Couleur personnalisée des caractères non-imprimables »)."/>
 			<npcIncludeCcUniEol-tip value="Applique les paramètres d’apparence des caractères non-imprimables aux contrôles C0, C1 et aux caractères Unicode EOL (ligne suivante, séparateur de ligne et séparateur de paragraphe)."/>
-			<searchingInSelThresh-tip value="Nombre de caractères sélectionnés dans la zone d’édition pour cocher automatiquement la case « Dans sélection » quand la fenêtre de recherche est activée. La valeur maximale est 1024. Mettre la valeur à 0 pour désactiver l’auto-coche."/>
+			<searchingInSelThresh-tip value="Nombre minimal de caractères sélectionnés dans la zone d’édition pour cocher automatiquement la case « Dans sélection » quand la fenêtre de recherche est activée. La valeur maximale est $INT_REPLACE$. Mettre la valeur à 0 pour désactiver l’auto-coche."/>
+			<searchingFillFindWhat-tip value="Nombre maximal de caractères sélectionnés dans la zone de texte à utiliser pour remplir automatiquement le champ « Rechercher » lors de l'activation de la combinaison Ctrl+F. La valeur maximale est $INT_REPLACE$, soit la taille maximale du champ « Rechercher », limitée par le système."/>
 			<verticalEdge-tip value="Ajoutez votre marqueur de colonne en indiquant sa position avec un nombre entier. Vous pouvez définir plusieurs marqueurs de colonne en utilisant un espace pour séparer les différents nombres."/>
+			<fileSaveAsCopySaveButton-tip value="Maintenez Shift en appuyant sur Enregistrer pour ouvrir une copie après enregistrement."/>
 			<autoIndentBasic-tip value="Assurez-vous que la ligne courante (c'est-à-dire la nouvelle ligne saisie en appuyant sur ENTRÉE) a la même indentation que la ligne précédente."/>
 			<autoIndentAdvanced-tip value="Activer l'indentation intelligente pour les langages de « type C » et Python. Les langages de « type C » comprennent :
 C, C++, Java, C#, Objective-C, PHP, JavaScript, JSP, CSS, Perl, Rust, PowerShell et JSON
 
 Si vous sélectionnez le mode avancé sans modifier les fichiers des langues mentionnées ci-dessus, les paramètres d'indentation resteront en mode basique."/>
+
+			<!-- Don't translate "Global override" and "Default Style" -->
+			<global-override-tip value="Activer le « global override » ici substituera ces paramètres dans tous les styles pour tous les langages de programmation. Vous préférerez probablement utiliser les paramètres « Default Style » à la place"/>
+			<scintillaRenderingTechnology-tip value="Cela peut améliorer le rendu des caractères spéciaux ou résoudre certains problèmes graphiques. Veuillez redémarrer Notepad++ pour appliquer le changement."/>
+
+			<!-- Due to the limited space on the status bar, if the translations for 'length' & 'lines' are much longer than the English words, please leave them in English instead of translating them. -->
+			<statusbar-length-lines value="longueur : $STR_REPLACE1$    lignes : $STR_REPLACE2$"/>
+
+			<!-- Due to the limited space on the status bar, if the translations for 'Ln' & 'Col' are longer than the English words, please leave them in English instead of translating them. -->
+			<statusbar-Ln-Col value="Ln : $STR_REPLACE1$    Col : $STR_REPLACE2$"/>
+
+			<!-- Due to the limited space on the status bar, if the translations for 'Pos' & 'Sel' are longer than the English words, please leave them in English instead of translating them. -->
+			<statusbar-Pos value="Pos : "/>
+			<statusbar-Sel value="Sel : "/>
+			<statusbar-Sel-number value="Sel"/>
+			<toolbar-accent-tip value="Cette option permet aux icônes de votre barre d'outils d'adopter la couleur d'accentuation du système Windows. La couleur d'accentuation est la couleur de surbrillance utilisée pour les boutons, les bordures et les tuiles du menu Démarrer sous Windows. Pour la modifier, accédez à Paramètres &gt; Personnalisation &gt; Couleurs, puis sélectionnez votre couleur d'accentuation préférée."/>
+			<len-limit-exceeded-tip value="Limite de longueur dépassée : Votre saisie peut dépasser la limite autorisée et avoir été tronquée, et elle ne sera pas enregistrée pour la prochaine session."/>
+			<max-len-on-search-tip value="Votre saisie peut dépasser la limite autorisée et avoir été tronquée, et elle ne sera pas enregistrée pour la prochaine session."/>
+			<max-len-on-save-tip value="La longueur de votre saisie est très longue et il se peut qu'elle ne soit pas enregistrée pour votre prochaine session."/>
+			<goto-setting-tip value="Réglage du paramètre ici"/>
+			<tabbar-tabcompactlabellen-tip value="Limiter la longueur du libellé pour compacter l'onglet. Appuyez sur Entrée pour appliquer la valeur indiquée. Valeurs possibles : 1 à 257 caractères (0 désactive la troncature)."/>
 		</MiscStrings>
 	</Native-Langue>
 </NotepadPlus>

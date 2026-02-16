@@ -1,6 +1,6 @@
 echo off
 rem This file is part of Notepad++ project
-rem Copyright (C)2021 Don HO <don.h@free.fr>
+rem Copyright (C)2025 Don HO <don.h@free.fr>
 rem
 rem This program is free software: you can redistribute it and/or modify
 rem it under the terms of the GNU General Public License as published by
@@ -19,69 +19,35 @@ echo on
 
 if %SIGN% == 0 goto NoSign
 
-set signtoolWin11="C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe"
-set signBinary=%signtoolWin11% sign /fd SHA256 /tr http://timestamp.digicert.com /td sha256 /a /f %NPP_CERT% /p %NPP_CERT_PWD% /d "Notepad++" /du https://notepad-plus-plus.org/
+REM commands to sign
+
+set signtoolWin11="C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\signtool.exe"
+
+set Sign_by_GlobalSignCert=%signtoolWin11% sign /n "NOTEPAD++" /tr http://timestamp.globalsign.com/tsa/r6advanced1 /td SHA256 /fd SHA256
+
+set DOUBLE_SIGNING=/as
+
+REM files to be signed
+
+set nppBinaries=..\bin\notepad++.exe ..\bin64\notepad++.exe ..\binarm64\notepad++.exe
+
+set componentsBinaries=..\bin\plugins\Config\nppPluginList.dll ..\bin64\plugins\Config\nppPluginList.dll ..\binarm64\plugins\Config\nppPluginList.dll ..\bin\updater\GUP.exe ..\bin64\updater\GUP.exe ..\binarm64\updater\GUP.exe ..\bin\updater\libcurl.dll ..\bin64\updater\libcurl.dll ..\binarm64\updater\libcurl.dll
+
+set pluginBinaries=..\bin\plugins\NppExport\NppExport.dll ..\bin64\plugins\NppExport\NppExport.dll ..\binarm64\plugins\NppExport\NppExport.dll ..\bin\plugins\mimeTools\mimeTools.dll ..\bin64\plugins\mimeTools\mimeTools.dll ..\binarm64\plugins\mimeTools\mimeTools.dll ..\bin\plugins\NppConverter\NppConverter.dll ..\bin64\plugins\NppConverter\NppConverter.dll ..\binarm64\plugins\NppConverter\NppConverter.dll
 
 
-%signBinary% ..\bin\notepad++.exe
-If ErrorLevel 1 goto End
-%signBinary% ..\bin64\notepad++.exe
-If ErrorLevel 1 goto End
-%signBinary% ..\binarm64\notepad++.exe
+REM macro is used to sign NppShell.dll & NppShell.msix with hash algorithm SHA256, due to signtool.exe bug:
+REM "error 0x8007000B: The signature hash method specified (SHA512) must match the hash method used in the app package block map (SHA256)."
+REM "The hashAlgorithm specified in the /fd parameter is incorrect. Rerun SignTool using hashAlgorithm that matches the app package block map (used to create the app package)"
+REM Note that Publisher in Packaging/AppxManifest.xml‎ should match with the Subject of certificate.
+REM https://learn.microsoft.com/en-us/windows/msix/package/signing-known-issues
+set nppShellBinaries=..\bin\NppShell.x86.dll  ..\bin64\NppShell.msix  ..\bin64\NppShell.x64.dll ..\binarm64\NppShell.msix ..\binarm64\NppShell.arm64.dll
+
+
+%Sign_by_GlobalSignCert% %nppBinaries% %componentsBinaries% %pluginBinaries% %nppShellBinaries%
 If ErrorLevel 1 goto End
 
-%signBinary% ..\bin\NppShell.x86.dll
-If ErrorLevel 1 goto End
-%signBinary% ..\bin64\NppShell.msix
-If ErrorLevel 1 goto End
-%signBinary% ..\bin64\NppShell.x64.dll
-If ErrorLevel 1 goto End
-%signBinary% ..\binarm64\NppShell.msix
-If ErrorLevel 1 goto End
-%signBinary% ..\binarm64\NppShell.arm64.dll
-If ErrorLevel 1 goto End
 
-%signBinary% ..\bin\plugins\Config\nppPluginList.dll
-If ErrorLevel 1 goto End
-%signBinary% ..\bin64\plugins\Config\nppPluginList.dll
-If ErrorLevel 1 goto End
-%signBinary% ..\binarm64\plugins\Config\nppPluginList.dll
-If ErrorLevel 1 goto End
-
-%signBinary% ..\bin\updater\GUP.exe
-If ErrorLevel 1 goto End
-%signBinary% ..\bin64\updater\GUP.exe
-If ErrorLevel 1 goto End
-%signBinary% ..\binarm64\updater\GUP.exe
-If ErrorLevel 1 goto End
-
-%signBinary% ..\bin\updater\libcurl.dll
-If ErrorLevel 1 goto End
-%signBinary% ..\bin64\updater\libcurl.dll
-If ErrorLevel 1 goto End
-%signBinary% ..\binarm64\updater\libcurl.dll
-If ErrorLevel 1 goto End
-
-%signBinary% ..\bin\plugins\NppExport\NppExport.dll
-If ErrorLevel 1 goto End
-%signBinary% ..\bin64\plugins\NppExport\NppExport.dll
-If ErrorLevel 1 goto End
-%signBinary% ..\binarm64\plugins\NppExport\NppExport.dll
-If ErrorLevel 1 goto End
-
-%signBinary% ..\bin\plugins\mimeTools\mimeTools.dll
-If ErrorLevel 1 goto End
-%signBinary% ..\bin64\plugins\mimeTools\mimeTools.dll
-If ErrorLevel 1 goto End
-%signBinary% ..\binarm64\plugins\mimeTools\mimeTools.dll
-If ErrorLevel 1 goto End
-
-%signBinary% ..\bin\plugins\NppConverter\NppConverter.dll
-If ErrorLevel 1 goto End
-%signBinary% ..\bin64\plugins\NppConverter\NppConverter.dll
-If ErrorLevel 1 goto End
-%signBinary% ..\binarm64\plugins\NppConverter\NppConverter.dll
-If ErrorLevel 1 goto End
 
 :NoSign
 
@@ -111,6 +77,8 @@ copy /Y ..\src\contextMenu.xml .\minimalist\
 If ErrorLevel 1 goto End
 copy /Y ..\src\tabContextMenu_example.xml .\minimalist\
 If ErrorLevel 1 goto End
+copy /Y ..\src\toolbarButtonsConf_example.xml .\minimalist\
+If ErrorLevel 1 goto End
 copy /Y ..\src\shortcuts.xml .\minimalist\
 If ErrorLevel 1 goto End
 copy /Y ..\bin\doLocalConf.xml .\minimalist\
@@ -120,8 +88,6 @@ If ErrorLevel 1 goto End
 copy /Y ..\bin\"notepad++.exe" .\minimalist\
 If ErrorLevel 1 goto End
 copy /Y ".\themes\DarkModeDefault.xml" .\minimalist\themes\
-If ErrorLevel 1 goto End
-copy /Y ..\src\toolbarIcons.xml .\minimalist\
 If ErrorLevel 1 goto End
 
 
@@ -146,6 +112,8 @@ copy /Y ..\src\contextMenu.xml .\minimalist64\
 If ErrorLevel 1 goto End
 copy /Y ..\src\tabContextMenu_example.xml .\minimalist64\
 If ErrorLevel 1 goto End
+copy /Y ..\src\toolbarButtonsConf_example.xml .\minimalist64\
+If ErrorLevel 1 goto End
 copy /Y ..\src\shortcuts.xml .\minimalist64\
 If ErrorLevel 1 goto End
 copy /Y ..\bin\doLocalConf.xml .\minimalist64\
@@ -155,8 +123,6 @@ If ErrorLevel 1 goto End
 copy /Y ..\bin64\"notepad++.exe" .\minimalist64\
 If ErrorLevel 1 goto End
 copy /Y ".\themes\DarkModeDefault.xml" .\minimalist64\themes\
-If ErrorLevel 1 goto End
-copy /Y ..\src\toolbarIcons.xml .\minimalist64\
 If ErrorLevel 1 goto End
 
 
@@ -181,6 +147,8 @@ copy /Y ..\src\contextMenu.xml .\minimalistArm64\
 If ErrorLevel 1 goto End
 copy /Y ..\src\tabContextMenu_example.xml .\minimalistArm64\
 If ErrorLevel 1 goto End
+copy /Y ..\src\toolbarButtonsConf_example.xml .\minimalistArm64\
+If ErrorLevel 1 goto End
 copy /Y ..\src\shortcuts.xml .\minimalistArm64\
 If ErrorLevel 1 goto End
 copy /Y ..\bin\doLocalConf.xml .\minimalistArm64\
@@ -190,8 +158,6 @@ If ErrorLevel 1 goto End
 copy /Y ..\binarm64\"notepad++.exe" .\minimalistArm64\
 If ErrorLevel 1 goto End
 copy /Y ".\themes\DarkModeDefault.xml" .\minimalistArm64\themes\
-If ErrorLevel 1 goto End
-copy /Y ..\src\toolbarIcons.xml .\minimalistArm64\
 If ErrorLevel 1 goto End
 
 
@@ -267,6 +233,8 @@ copy /Y ..\src\contextMenu.xml .\zipped.package.release\
 If ErrorLevel 1 goto End
 copy /Y ..\src\tabContextMenu_example.xml .\zipped.package.release\
 If ErrorLevel 1 goto End
+copy /Y ..\src\toolbarButtonsConf_example.xml .\zipped.package.release\
+If ErrorLevel 1 goto End
 copy /Y ..\src\shortcuts.xml .\zipped.package.release\
 If ErrorLevel 1 goto End
 copy /Y ..\bin\doLocalConf.xml .\zipped.package.release\
@@ -274,8 +242,6 @@ If ErrorLevel 1 goto End
 copy /Y ..\bin\nppLogNulContentCorruptionIssue.xml .\zipped.package.release\
 If ErrorLevel 1 goto End
 copy /Y ..\bin\"notepad++.exe" .\zipped.package.release\
-If ErrorLevel 1 goto End
-copy /Y ..\src\toolbarIcons.xml .\zipped.package.release\
 If ErrorLevel 1 goto End
 
 
@@ -295,6 +261,8 @@ copy /Y ..\src\contextMenu.xml .\zipped.package.release64\
 If ErrorLevel 1 goto End
 copy /Y ..\src\tabContextMenu_example.xml .\zipped.package.release64\
 If ErrorLevel 1 goto End
+copy /Y ..\src\toolbarButtonsConf_example.xml .\zipped.package.release64\
+If ErrorLevel 1 goto End
 copy /Y ..\src\shortcuts.xml .\zipped.package.release64\
 If ErrorLevel 1 goto End
 copy /Y ..\bin\doLocalConf.xml .\zipped.package.release64\
@@ -302,8 +270,6 @@ If ErrorLevel 1 goto End
 copy /Y ..\bin\nppLogNulContentCorruptionIssue.xml .\zipped.package.release64\
 If ErrorLevel 1 goto End
 copy /Y ..\bin64\"notepad++.exe" .\zipped.package.release64\
-If ErrorLevel 1 goto End
-copy /Y ..\src\toolbarIcons.xml .\zipped.package.release64\
 If ErrorLevel 1 goto End
 
 
@@ -322,6 +288,8 @@ copy /Y ..\src\contextMenu.xml .\zipped.package.releaseArm64\
 If ErrorLevel 1 goto End
 copy /Y ..\src\tabContextMenu_example.xml .\zipped.package.releaseArm64\
 If ErrorLevel 1 goto End
+copy /Y ..\src\toolbarButtonsConf_example.xml .\zipped.package.releaseArm64\
+If ErrorLevel 1 goto End
 copy /Y ..\src\shortcuts.xml .\zipped.package.releaseArm64\
 If ErrorLevel 1 goto End
 copy /Y ..\bin\doLocalConf.xml .\zipped.package.releaseArm64\
@@ -329,8 +297,6 @@ If ErrorLevel 1 goto End
 copy /Y ..\bin\nppLogNulContentCorruptionIssue.xml .\zipped.package.releaseArm64\
 If ErrorLevel 1 goto End
 copy /Y ..\binarm64\"notepad++.exe" .\zipped.package.releaseArm64\
-If ErrorLevel 1 goto End
-copy /Y ..\src\toolbarIcons.xml .\zipped.package.releaseArm64\
 If ErrorLevel 1 goto End
 
 
@@ -496,52 +462,69 @@ If ErrorLevel 1 goto End
 "C:\Program Files\7-Zip\7z.exe" a -r .\build\npp.portable.arm64.7z .\zipped.package.releaseArm64\*
 If ErrorLevel 1 goto End
 
-
 rem set var locally in this batch file
-setlocal enableDelayedExpansion 
+setlocal 
 
-cd .\build\
+:: Get npp.6.9.Installer.exe in %nppInstallerVar%
+for %%f in (npp.*.Installer.exe) do set "nppInstallerVar=%%f"
 
+rem get the version string "6.9" in %VERSION%
+set "VERSION=%nppInstallerVar:npp.=%"
+rem replace "npp." with nothing in "npp.6.9.Installer.exe" - now VERSION is "6.9.Installer.exe"
 
-for %%a in (npp.*.Installer.exe) do (
-  rem echo a = %%a
-  set nppInstallerVar=%%a
-  set nppInstallerVar64=!nppInstallerVar:Installer.exe=Installer.x64.exe!
-  set nppInstallerVarArm64=!nppInstallerVar:Installer.exe=Installer.arm64.exe!
+rem echo %VERSION%
 
-  rem nppInstallerVar should be the version for example: 6.9
-  rem we put npp.6.9. + (portable.zip instead of Installer.exe) into var zipvar
-  set zipvar=!nppInstallerVar:Installer.exe=portable.zip!
+set "VERSION=%VERSION:.Installer.exe=%"
+rem replace ".Installer.exe" with nothing in "6.9.Installer.exe" - now VERSION is "6.9"
 
-  set zipvar64=!nppInstallerVar:Installer.exe=portable.x64.zip!
-  set zipvarArm64=!nppInstallerVar:Installer.exe=portable.arm64.zip!
-  set 7zvar=!nppInstallerVar:Installer.exe=portable.7z!
-  set 7zvar64=!nppInstallerVar:Installer.exe=portable.x64.7z!
-  set 7zvarArm64=!nppInstallerVar:Installer.exe=portable.arm64.7z!
-  set 7zvarMin=!nppInstallerVar:Installer.exe=portable.minimalist.7z!
-  set 7zvarMin64=!nppInstallerVar:Installer.exe=portable.minimalist.x64.7z!
-  set 7zvarMinArm64=!nppInstallerVar:Installer.exe=portable.minimalist.arm64.7z!
-)
+rem echo %VERSION%
 
-rem echo zipvar=!zipvar!
-rem echo zipvar64=!zipvar64!
-rem echo 7zvar=!7zvar!
-rem echo 7zvar64=!7zvar64!
-rem echo 7zvarMin=!7zvarMin!
-rem echo 7zvarMin64=!7zvarMin64!
-ren npp.portable.zip !zipvar!
-ren npp.portable.x64.zip !zipvar64!
-ren npp.portable.arm64.zip !zipvarArm64!
-ren npp.portable.7z !7zvar!
-ren npp.portable.x64.7z !7zvar64!
-ren npp.portable.arm64.7z !7zvarArm64!
-ren npp.portable.minimalist.7z !7zvarMin!
-ren npp.portable.minimalist.x64.7z !7zvarMin64!
-ren npp.portable.minimalist.arm64.7z !7zvarMinArm64!
+cd .\msi\
+dotnet build -c release -p:OutputPath=..\build\ -p:DefineConstants=Version=%VERSION%
+If ErrorLevel 1 goto End
+
+cd ..\build\
 
 
-cd ..
+ren npp.portable.zip npp.%VERSION%.portable.zip
+If ErrorLevel 1 goto End
+
+ren npp.portable.x64.zip npp.%VERSION%.portable.x64.zip
+If ErrorLevel 1 goto End
+
+ren npp.portable.arm64.zip npp.%VERSION%.portable.arm64.zip
+If ErrorLevel 1 goto End
+
+ren npp.portable.7z npp.%VERSION%.portable.7z
+If ErrorLevel 1 goto End
+
+ren npp.portable.x64.7z npp.%VERSION%.portable.x64.7z
+If ErrorLevel 1 goto End
+
+ren npp.portable.arm64.7z npp.%VERSION%.portable.arm64.7z
+If ErrorLevel 1 goto End
+
+ren npp.portable.minimalist.7z npp.%VERSION%.portable.minimalist.7z
+If ErrorLevel 1 goto End
+
+ren npp.portable.minimalist.x64.7z npp.%VERSION%.portable.minimalist.x64.7z
+If ErrorLevel 1 goto End
+
+ren npp.portable.minimalist.arm64.7z npp.%VERSION%.portable.minimalist.arm64.7z
+If ErrorLevel 1 goto End
+
+ren npp.Installer.x64.msi npp.%VERSION%.Installer.x64.msi
+If ErrorLevel 1 goto End
+
+if %SIGN% == 0 goto NoSignInstaller
+
+%Sign_by_GlobalSignCert% %nppInstallerVar% npp.%VERSION%.Installer.x64.exe npp.%VERSION%.Installer.arm64.exe npp.%VERSION%.Installer.x64.msi
+If ErrorLevel 1 goto End
+
+:NoSignInstaller
 
 endlocal
+
+cd ..
 
 :End

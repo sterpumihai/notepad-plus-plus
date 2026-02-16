@@ -7,7 +7,7 @@
 #   not optimal.
 #
 
-cmake_minimum_required(VERSION 3.4)
+cmake_minimum_required(VERSION 3.10)
 
 PROJECT(Notepad++)
 
@@ -28,6 +28,7 @@ SET(projIncludDir	../../scintilla/include/
 					./MISC/SysMsg/
 					./WinControls/StatusBar/
 					./WinControls/StaticDialog/RunDlg/
+					./pugixml/
 					./TinyXml/
 					./WinControls/ColourPicker/
 					./Win32Explr/
@@ -45,7 +46,6 @@ SET(projIncludDir	../../scintilla/include/
 					./WinControls/ToolTip/
 					./MISC/Exception/
 					./MISC/Common/
-					./TinyXml/tinyXmlA/
 					./WinControls/AnsiCharPanel/
 					./WinControls/ClipboardHistory/
 					./WinControls/FindCharsInRange/
@@ -91,6 +91,7 @@ SET(src_files
 			./ScintillaComponent/columnEditor.cpp
 			./MISC/Common/Common.cpp
 			./MISC/Common/FileInterface.cpp
+			./MISC/Common/SortLocale.cpp
 			./WinControls/ContextMenu/ContextMenu.cpp
 			./WinControls/OpenSaveFileDialog/CustomFileDialog.cpp
 			./WinControls/PluginsAdmin/pluginsAdmin.cpp
@@ -171,14 +172,11 @@ SET(src_files
 			./WinControls/TabBar/TabBar.cpp
 			./WinControls/TaskList/TaskList.cpp
 			./WinControls/TaskList/TaskListDlg.cpp
+			./pugixml/pugixml.cpp
 			./TinyXml/tinystr.cpp
-			./TinyXml/tinyXmlA/tinystrA.cpp
 			./TinyXml/tinyxml.cpp
-			./TinyXml/tinyXmlA/tinyxmlA.cpp
 			./TinyXml/tinyxmlerror.cpp
-			./TinyXml/tinyXmlA/tinyxmlerrorA.cpp
 			./TinyXml/tinyxmlparser.cpp
-			./TinyXml/tinyXmlA/tinyxmlparserA.cpp
 			./WinControls/ToolBar/ToolBar.cpp
 			./WinControls/ToolTip/ToolTip.cpp
 			./WinControls/TrayIcon/trayIconControler.cpp
@@ -200,11 +198,11 @@ SET(src_files
 )
 
 SET(include_files
+			./MISC/Common/NppConstants.h
 			./clipboardFormats.h
 			./DarkMode/DarkMode.h
 			./DarkMode/IatHook.h
 			./DarkMode/UAHMenuBar.h
-			./dpiManager.h
 			./dpiManagerV2.h
 			./keys.h
 			./localizationString.h
@@ -218,9 +216,9 @@ SET(include_files
 			./MISC/sha2/sha-256.h
 			./MISC/sha512/sha512.h
 			./NppDarkMode.h
+			./NppXml.h
 			./ScintillaComponent/columnEditor_rc.h
 			./ScintillaComponent/FindReplaceDlg_rc.h
-			./ScintillaComponent/ScintillaRef.h
 			./Utf8.h
 			./WinControls/AboutDlg/AboutDlg.h
 			./WinControls/AnsiCharPanel/ansiCharPanel.h
@@ -334,17 +332,16 @@ SET(include_files
 			./WinControls/TaskList/TaskList.h
 			./WinControls/TaskList/TaskListDlg.h
 			./WinControls/TaskList/TaskListDlg_rc.h
+			./pugixml/pugiconfig.hpp
+			./pugixml/pugixml.hpp
 			./TinyXml/tinystr.h
-			./TinyXml/tinyXmlA/tinystrA.h
 			./TinyXml/tinyxml.h
-			./TinyXml/tinyXmlA/tinyxmlA.h
 			./WinControls/ToolBar/ToolBar.h
 			./WinControls/ToolTip/ToolTip.h
 			./WinControls/TrayIcon/trayIconControler.h
 			./uchardet/uchardet.h
 			./WinControls/AboutDlg/URLCtrl.h
 			./ScintillaComponent/UserDefineDialog.h
-			./ScintillaComponent/UserDefineLangReference.h
 			./ScintillaComponent/UserDefineResource.h
 			./Utf8_16.h
 			./WinControls/VerticalFileSwitcher/VerticalFileSwitcher.h
@@ -397,13 +394,13 @@ IF (WIN32)
 if ( MSVC )
 	#do not use for mingw builds
 	SET(CMAKE_CXX_FLAGS "/EHa /MP /W4")
-	SET(defs -DUNICODE -D_UNICODE -D_WIN32_WINNT=_WIN32_WINNT_WIN7 -DNTDDI_VERSION=NTDDI_WIN7 -D_USE_64BIT_TIME_T -DTIXML_USE_STL -DTIXMLA_USE_STL -DNOMINMAX -DOEMRESOURCE -D_CRT_NONSTDC_NO_DEPRECATE -D_CRT_SECURE_NO_WARNINGS -D_SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING )
+	SET(defs -DUNICODE -D_UNICODE -D_WIN32_WINNT=_WIN32_WINNT_WIN7 -DNTDDI_VERSION=NTDDI_WIN7 -D_USE_64BIT_TIME_T -DTIXML_USE_STL -DNOMINMAX -DOEMRESOURCE -D_CRT_NONSTDC_NO_DEPRECATE -D_CRT_SECURE_NO_WARNINGS -D_SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING )
 	set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MT")
 	set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MTd")
 else ( MSVC )
 	# For possible MinGW compilation
 	SET(CMAKE_CXX_FLAGS "-include../gcc/gcc-fixes.h -std=c++20 -fpermissive -municode")
-	SET(defs -DUNICODE -D_UNICODE -D_WIN32_WINNT=_WIN32_WINNT_WIN7 -DNTDDI_VERSION=NTDDI_WIN7 -D_USE_64BIT_TIME_T -DTIXML_USE_STL -DTIXMLA_USE_STL -DNOMINMAX -DOEMRESOURCE)
+	SET(defs -DUNICODE -D_UNICODE -D_WIN32_WINNT=_WIN32_WINNT_WIN7 -DNTDDI_VERSION=NTDDI_WIN7 -D_USE_64BIT_TIME_T -DTIXML_USE_STL -DNOMINMAX -DOEMRESOURCE)
 endif ( MSVC )
 ENDIF (WIN32)
 
@@ -422,6 +419,15 @@ find_library(LEXILLA_STATIC_LIBRARY
 	HINTS "../../lexilla/bin"
 	REQUIRED
 )
+
+execute_process(
+    COMMAND cmd /C "cd ${CMAKE_SOURCE_DIR} && NppLibsVersionH-generator.bat"
+    RESULT_VARIABLE pre-build-result
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+if(NOT pre-build-result EQUAL 0)
+    message(FATAL_ERROR "Pre-build event failed with exit code: ${pre-build-result}")
+endif()
 
 ADD_EXECUTABLE(notepad++ ${option} ${src_files} ${include_files} ${rcFiles})
 

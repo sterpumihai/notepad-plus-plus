@@ -14,20 +14,45 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#include "json.hpp"
-#include <algorithm>
-#include <iostream>
-#include <fstream>
-#include <string>
-#include <cctype>
+
+#include "pluginsAdmin.h"
+
+#include <windows.h>
+
 #include <shlobj.h>
 #include <shlwapi.h>
-#include "pluginsAdmin.h"
-#include "ScintillaEditView.h"
-#include "localization.h"
-#include "Processus.h"
+
+#include <algorithm>
+#include <cctype>
+#include <cwchar>
+#include <string>
+#include <utility>
+#include <vector>
+
+#ifdef NDEBUG
+#include <cstring>
+#else
+#include <exception>
+#include <fstream>
+#endif
+
+#include <json.hpp>
+
+#include "Common.h"
+#include "ListView.h"
+#include "Notepad_plus_msgs.h"
+#include "NppDarkMode.h"
+#include "Parameters.h"
 #include "PluginsManager.h"
+#include "StaticDialog.h"
+#include "localization.h"
+#include "menuCmdID.h"
+#include "pluginsAdminRes.h"
+#include "resource.h"
+
+#ifdef NDEBUG
 #include "verifySignedfile.h"
+#endif
 
 #define TEXTFILE        256
 #define IDR_PLUGINLISTJSONFILE  101
@@ -36,8 +61,7 @@ using namespace std;
 using nlohmann::json;
 
 
-
-wstring PluginUpdateInfo::describe()
+std::wstring PluginUpdateInfo::describe() const
 {
 	wstring desc;
 	const wchar_t *EOL = L"\r\n";
@@ -65,7 +89,7 @@ wstring PluginUpdateInfo::describe()
 }
 
 /// Try to find in the Haystack the Needle - ignore case
-bool findStrNoCase(const wstring & strHaystack, const wstring & strNeedle)
+static bool findStrNoCase(const std::wstring& strHaystack, const std::wstring& strNeedle)
 {
 	auto it = std::search(
 		strHaystack.begin(), strHaystack.end(),
@@ -89,7 +113,7 @@ bool PluginsAdminDlg::isFoundInListFromIndex(const PluginViewList& inWhichList, 
 
 long PluginsAdminDlg::searchFromCurrentSel(const PluginViewList& inWhichList, const wstring& str2search, bool inWhichPart, bool isNextMode) const
 {
-	// search from curent selected item or from the beginning
+	// search from current selected item or from the beginning
 	long currentIndex = inWhichList.getSelectedIndex();
 	int nbItem = static_cast<int>(inWhichList.nbItem());
 	if (currentIndex == -1)
@@ -110,7 +134,7 @@ long PluginsAdminDlg::searchFromCurrentSel(const PluginViewList& inWhichList, co
 				return i;
 		}
 
-		// from to begining to current position
+		// from to beginning to current position
 		for (int i = 0; i < currentIndex + (isNextMode ? 1 : 0); ++i)
 		{
 			if (isFoundInListFromIndex(inWhichList, i, str2search, inWhichPart))
@@ -120,17 +144,16 @@ long PluginsAdminDlg::searchFromCurrentSel(const PluginViewList& inWhichList, co
 	return -1;
 }
 
-void PluginsAdminDlg::create(int dialogID, bool isRTL, bool msgDestParent)
+void PluginsAdminDlg::create(int dialogID, bool isRTL, bool msgDestParent, WORD fontSize)
 {
 	// get plugin installation path and launch mode (Admin or normal)
 	collectNppCurrentStatusInfos();
 
-	StaticDialog::create(dialogID, isRTL, msgDestParent);
+	StaticDialog::create(dialogID, isRTL, msgDestParent, fontSize);
 
 	RECT rect{};
 	getClientRect(rect);
 	_tab.init(_hInst, _hSelf, false, true);
-	NppDarkMode::subclassTabControl(_tab.getHSelf());
 
 	const wchar_t *available = L"Available";
 	const wchar_t *updates = L"Updates";
@@ -384,11 +407,11 @@ bool PluginsAdminDlg::removePlugins()
 	return exitToInstallRemovePlugins(pa_remove, puis);
 }
 
-void PluginsAdminDlg::changeTabName(LIST_TYPE index, const wchar_t *name2change)
+void PluginsAdminDlg::changeTabName(LIST_TYPE index, wchar_t* name2change)
 {
 	TCITEM tie{};
 	tie.mask = TCIF_TEXT;
-	tie.pszText = (wchar_t *)name2change;
+	tie.pszText = name2change;
 	TabCtrl_SetItem(_tab.getHSelf(), index, &tie);
 
 	wchar_t label[MAX_PATH]{};
@@ -454,7 +477,7 @@ void PluginViewList::pushBack(PluginUpdateInfo* pi)
 // "[8.3,]"       : any version from 8.3 to the latest one
 // "[,8.2.1]"     : 8.2.1 and any previous version
 //
-std::pair<Version, Version> getIntervalVersions(wstring intervalVerStr)
+static std::pair<Version, Version> getIntervalVersions(std::wstring intervalVerStr)
 {
 	std::pair<Version, Version> result;
 
@@ -462,11 +485,11 @@ std::pair<Version, Version> getIntervalVersions(wstring intervalVerStr)
 		return result;
 
 	const size_t indexEnd = intervalVerStr.length() - 1;
-	if (intervalVerStr[0] == '[' && intervalVerStr[indexEnd] == ']') // interval versions format
+	if (intervalVerStr[0] == L'[' && intervalVerStr[indexEnd] == L']') // interval versions format
 	{
 		wstring cleanIntervalVerStr = intervalVerStr.substr(1, indexEnd - 1);
 		vector<wstring> versionVect;
-		cutStringBy(cleanIntervalVerStr.c_str(), versionVect, ',', true);
+		cutStringBy(cleanIntervalVerStr.c_str(), versionVect, L',', true);
 		if (versionVect.size() == 2)
 		{
 			if (!versionVect[0].empty() && !versionVect[1].empty()) // "[4.2,6.6.6]" : from version 4.2 to 6.6.6 inclusive
@@ -484,7 +507,7 @@ std::pair<Version, Version> getIntervalVersions(wstring intervalVerStr)
 			}
 		}
 	}
-	else if (intervalVerStr[0] != '[' && intervalVerStr[indexEnd] != ']') // one version format -> "6.9" : exact version 6.9
+	else if (intervalVerStr[0] != L'[' && intervalVerStr[indexEnd] != L']') // one version format -> "6.9" : exact version 6.9
 	{
 		result.first = Version(intervalVerStr);
 		result.second = Version(intervalVerStr);
@@ -501,7 +524,7 @@ std::pair<Version, Version> getIntervalVersions(wstring intervalVerStr)
 // "[4.2,6.6.6][6.4,8.9]"  : The 1st interval from version 4.2 to 6.6.6 inclusive, the 2nd interval from version 6.4 to 8.9
 // "[8.3,][6.9,6.9]"       : The 1st interval any version from 8.3 to the latest version, the 2nd interval present only version 6.9
 // "[,8.2.1][4.4,]"        : The 1st interval 8.2.1 and any previous version, , the 2nd interval any version from 4.4 to the latest version
-std::pair<std::pair<Version, Version>, std::pair<Version, Version>> getTwoIntervalVersions(const wstring& twoIntervalVerStr)
+static std::pair<std::pair<Version, Version>, std::pair<Version, Version>> getTwoIntervalVersions(const std::wstring& twoIntervalVerStr)
 {
 	std::pair<std::pair<Version, Version>, std::pair<Version, Version>> r;
 	wstring sep = L"][";
@@ -518,7 +541,7 @@ std::pair<std::pair<Version, Version>, std::pair<Version, Version>> getTwoInterv
 	return r;
 }
 
-bool loadFromJson(std::vector<PluginUpdateInfo*>& pl, wstring& verStr, const json& j)
+static bool loadFromJson(std::vector<PluginUpdateInfo*>& pl, std::wstring& verStr, const json& j)
 {
 	if (j.empty())
 		return false;
@@ -617,13 +640,13 @@ bool loadFromJson(std::vector<PluginUpdateInfo*>& pl, wstring& verStr, const jso
 	return true;
 }
 
-PluginUpdateInfo::PluginUpdateInfo(const wstring& fullFilePath, const wstring& filename)
+PluginUpdateInfo::PluginUpdateInfo(const std::wstring& fullFilePath, const std::wstring& fileName)
 {
 	if (!doesFileExist(fullFilePath.c_str()))
 		return;
 
 	_fullFilePath = fullFilePath;
-	_displayName = filename;
+	_displayName = fileName;
 
 	std::string content = getFileContent(fullFilePath.c_str());
 	if (content.empty())
@@ -631,9 +654,6 @@ PluginUpdateInfo::PluginUpdateInfo(const wstring& fullFilePath, const wstring& f
 
 	_version.setVersionFrom(fullFilePath);
 }
-
-typedef const char * (__cdecl * PFUNCGETPLUGINLIST)();
-
 
 bool PluginsAdminDlg::initFromJson()
 {
@@ -727,9 +747,6 @@ bool PluginsAdminDlg::updateList()
 {
 	// initialize the primary view with the plugin list loaded from json 
 	initAvailablePluginsViewFromList();
-
-	// initialize update list view
-	checkUpdates();
 
 	// initialize incompatible list view
 	initIncompatiblePluginList();
@@ -986,18 +1003,13 @@ bool PluginViewList::hideFromListIndex(size_t index2hide)
 	return true;
 }
 
-bool PluginsAdminDlg::checkUpdates()
-{
-	return true;
-}
-
 // begin insentive-case search from the second key-in character
 bool PluginsAdminDlg::searchInPlugins(bool isNextMode) const
 {
-	constexpr int maxLen = 256;
+	static constexpr int maxLen = 256;
 	wchar_t txt2search[maxLen]{};
 	::GetDlgItemText(_hSelf, IDC_PLUGINADM_SEARCH_EDIT, txt2search, maxLen);
-	if (lstrlen(txt2search) < 2)
+	if (std::wcslen(txt2search) < 2)
 		return false;
 
 	HWND tabHandle = _tab.getHSelf();
@@ -1079,7 +1091,7 @@ void PluginsAdminDlg::switchDialog(int indexToSwitch)
 		}
 		break;
 
-		case 3: // incompability plugins
+		case 3: // incompatible plugins
 		{
 			showAvailable = false;
 			showUpdate = false;
@@ -1138,12 +1150,12 @@ intptr_t CALLBACK PluginsAdminDlg::run_dlgProc(UINT message, WPARAM wParam, LPAR
 	{
 		case WM_CTLCOLOREDIT:
 		{
-			return NppDarkMode::onCtlColorSofter(reinterpret_cast<HDC>(wParam));
+			return NppDarkMode::onCtlColorCtrl(reinterpret_cast<HDC>(wParam));
 		}
 
 		case WM_CTLCOLORDLG:
 		{
-			return NppDarkMode::onCtlColorDarker(reinterpret_cast<HDC>(wParam));
+			return NppDarkMode::onCtlColorDlg(reinterpret_cast<HDC>(wParam));
 		}
 
 		case WM_CTLCOLORSTATIC:
@@ -1155,7 +1167,7 @@ intptr_t CALLBACK PluginsAdminDlg::run_dlgProc(UINT message, WPARAM wParam, LPAR
 				{
 					return NppDarkMode::onCtlColor(reinterpret_cast<HDC>(wParam));
 				}
-				return NppDarkMode::onCtlColorDarker(reinterpret_cast<HDC>(wParam));
+				return NppDarkMode::onCtlColorDlg(reinterpret_cast<HDC>(wParam));
 			}
 			break;
 		}
@@ -1178,7 +1190,6 @@ intptr_t CALLBACK PluginsAdminDlg::run_dlgProc(UINT message, WPARAM wParam, LPAR
 		case WM_DPICHANGED:
 		{
 			_dpiManager.setDpiWP(wParam);
-			_repoLink.destroy();
 
 			const size_t szColVer = _dpiManager.scale(100);
 			const size_t szColName = szColVer * 2;
@@ -1329,12 +1340,6 @@ intptr_t CALLBACK PluginsAdminDlg::run_dlgProc(UINT message, WPARAM wParam, LPAR
 				}
 			}
 
-			return TRUE;
-		}
-
-		case WM_DESTROY:
-		{
-			_repoLink.destroy();
 			return TRUE;
 		}
 	}

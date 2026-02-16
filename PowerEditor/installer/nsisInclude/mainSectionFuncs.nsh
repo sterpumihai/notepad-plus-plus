@@ -39,6 +39,12 @@ initUpdatePath:
 	StrCpy $PLUGIN_INST_PATH "$INSTDIR\plugins"
 	StrCpy $ALLUSERS_PLUGIN_CONF_PATH "$PLUGIN_INST_PATH\Config"
 	
+	; in Silent mode we cannot use the NSIS GUI for handling the doLocalConf mode
+	; but we need to directly use the previous user setting
+	IfSilent 0 +3
+	IfFileExists $INSTDIR\doLocalConf.xml 0 +2
+	StrCpy $noUserDataChecked ${BST_CHECKED}
+
 	${If} $noUserDataChecked == ${BST_CHECKED}
 
 		File "..\bin\doLocalConf.xml"
@@ -75,7 +81,7 @@ Function copyCommonFiles
 	SetOutPath "$UPDATE_PATH\"
 	File "..\bin\contextMenu.xml"
 	File "..\src\tabContextMenu_example.xml"
-	File "..\src\toolbarIcons.xml"
+	File "..\src\toolbarButtonsConf_example.xml"
 
 	SetOverwrite on
 	SetOutPath "$INSTDIR\"
@@ -339,31 +345,31 @@ FunctionEnd
 Function removeOldContextMenu
    ; Context Menu Management : removing old version of Context Menu module
 	IfFileExists "$INSTDIR\nppcm.dll" 0 +3
-		ExecWait 'regsvr32 /u /s "$INSTDIR\nppcm.dll"'
+		ExecWait '"$winSysDir\regsvr32.exe" /u /s "$INSTDIR\nppcm.dll"'
 		Delete "$INSTDIR\nppcm.dll"
         
     IfFileExists "$INSTDIR\NppShell.dll" 0 +3
-		ExecWait 'regsvr32 /u /s "$INSTDIR\NppShell.dll"'
+		ExecWait '"$winSysDir\regsvr32.exe" /u /s "$INSTDIR\NppShell.dll"'
 		Delete "$INSTDIR\NppShell.dll"
 		
     IfFileExists "$INSTDIR\NppShell_01.dll" 0 +3
-		ExecWait 'regsvr32 /u /s "$INSTDIR\NppShell_01.dll"'
+		ExecWait '"$winSysDir\regsvr32.exe" /u /s "$INSTDIR\NppShell_01.dll"'
 		Delete "$INSTDIR\NppShell_01.dll"
         
     IfFileExists "$INSTDIR\NppShell_02.dll" 0 +3
-		ExecWait 'regsvr32 /u /s "$INSTDIR\NppShell_02.dll"'
+		ExecWait '"$winSysDir\regsvr32.exe" /u /s "$INSTDIR\NppShell_02.dll"'
 		Delete "$INSTDIR\NppShell_02.dll"
 		
     IfFileExists "$INSTDIR\NppShell_03.dll" 0 +3
-		ExecWait 'regsvr32 /u /s "$INSTDIR\NppShell_03.dll"'
+		ExecWait '"$winSysDir\regsvr32.exe" /u /s "$INSTDIR\NppShell_03.dll"'
 		Delete "$INSTDIR\NppShell_03.dll"
 		
 	IfFileExists "$INSTDIR\NppShell_04.dll" 0 +3
-		ExecWait 'regsvr32 /u /s "$INSTDIR\NppShell_04.dll"'
+		ExecWait '"$winSysDir\regsvr32.exe" /u /s "$INSTDIR\NppShell_04.dll"'
 		Delete "$INSTDIR\NppShell_04.dll"
 		
 	IfFileExists "$INSTDIR\NppShell_05.dll" 0 +3
-		ExecWait 'regsvr32 /u /s "$INSTDIR\NppShell_05.dll"'
+		ExecWait '"$winSysDir\regsvr32.exe" /u /s "$INSTDIR\NppShell_05.dll"'
 		Delete "$INSTDIR\NppShell_05.dll"
 FunctionEnd
 

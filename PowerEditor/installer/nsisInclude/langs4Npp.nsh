@@ -135,13 +135,16 @@ SectionGroup "Localization" localization
 		CopyFiles "$PLUGINSDIR\nppLocalization\indonesian.xml" "$INSTDIR\localization\indonesian.xml"
 	${MementoSectionEnd}
 	${MementoUnselectedSection} "Irish" irish
-		CopyFiles "$PLUGINSDIR\nppLocalization\iriish.xml" "$INSTDIR\localization\irish.xml"
+		CopyFiles "$PLUGINSDIR\nppLocalization\irish.xml" "$INSTDIR\localization\irish.xml"
 	${MementoSectionEnd}
 	${MementoUnselectedSection} "Italian" italian
 		CopyFiles "$PLUGINSDIR\nppLocalization\italian.xml" "$INSTDIR\localization\italian.xml"
 	${MementoSectionEnd}
 	${MementoUnselectedSection} "Japanese" japanese
 		CopyFiles "$PLUGINSDIR\nppLocalization\japanese.xml" "$INSTDIR\localization\japanese.xml"
+	${MementoSectionEnd}
+	${MementoUnselectedSection} "Kabyle" kabyle
+		CopyFiles "$PLUGINSDIR\nppLocalization\kabyle.xml" "$INSTDIR\localization\kabyle.xml"
 	${MementoSectionEnd}
 	${MementoUnselectedSection} "Kannada" kannada
 		CopyFiles "$PLUGINSDIR\nppLocalization\kannada.xml" "$INSTDIR\localization\kannada.xml"

@@ -15,15 +15,16 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
-
+#include "localization.h"
 #include "Notepad_plus_Window.h"
 #include "functionListPanel.h"
 #include "xmlMatchedTagsHighlighter.h"
 #include "VerticalFileSwitcher.h"
-#include "ProjectPanel.h"
+#include "NppDarkMode.h"
 #include "documentMap.h"
 #include "Common.h"
 #include <stack>
+#include "shortcut.h"
 
 using namespace std;
 
@@ -46,12 +47,23 @@ BOOL Notepad_plus::notify(SCNotification *notification)
 	{
 		case SCN_MODIFIED:
 		{
-			if (!notifyView)
-				return FALSE;
+			if (!notifyView) return FALSE;
 
 			if (notification->modificationType & (SC_MOD_DELETETEXT | SC_MOD_INSERTTEXT))
 			{
+				// Make temporary tab name automatically by using the 1st line of content for untitled documents
+				Buffer* buffer = notifyView->getCurrentBuffer();
+				const NewDocDefaultSettings& ndds = NppParameters::getInstance().getNppGUI().getNewDocDefaultSettings();
+				intptr_t curLineIndex = _pEditView->execute(SCI_LINEFROMPOSITION, notification->position);
+				if (curLineIndex == 0 && ndds._useContentAsTabName && buffer->isUntitled() && !buffer->isUntitledTabRenamed())
+				{
+					useFirstLineAsTabName(buffer);
+				}
+
+				// Hold the correct position for "Begin/End &Select" or "Begin/End Select in Column Mode" commands
 				_pEditView->updateBeginEndSelectPosition(notification->modificationType & SC_MOD_INSERTTEXT, notification->position, notification->length);
+
+				// While the text modification, we make sure the link beblow the modification will be reprocessed
 				_linkTriggered = true;
 				::InvalidateRect(notifyView->getHSelf(), NULL, TRUE);
 			}
@@ -72,6 +84,8 @@ BOOL Notepad_plus::notify(SCNotification *notification)
 		case SCN_SAVEPOINTREACHED:
 		case SCN_SAVEPOINTLEFT:
 		{
+			//if (!notifyView) return FALSE; // Could be _invisibleEditView or _fileEditView (see the following code)
+
 			Buffer * buf = 0;
 			if (isFromPrimary)
 			{
@@ -113,7 +127,7 @@ BOOL Notepad_plus::notify(SCNotification *notification)
 					isDirty = true;
 			}
 
-			if (buf->isUnsync()) // buffer in Notepad++ is not syncronized with the file on disk - in this case the buffer is always dirty 
+			if (buf->isUnsync()) // buffer in Notepad++ is not synchronized with the file on disk - in this case the buffer is always dirty 
 				isDirty = true;
 
 			if (buf->isSavePointDirty())
@@ -123,15 +137,492 @@ BOOL Notepad_plus::notify(SCNotification *notification)
 			break;
 		}
 
-		case SCN_MODIFYATTEMPTRO:
+		case SCN_MARGINCLICK:
 		{
-			// nothing to do
+			if (!notifyView) return FALSE;
+
+			if (notification->nmhdr.hwndFrom == _mainEditView.getHSelf())
+				switchEditViewTo(MAIN_VIEW);
+			else if (notification->nmhdr.hwndFrom == _subEditView.getHSelf())
+				switchEditViewTo(SUB_VIEW);
+
+			intptr_t lineClick = _pEditView->execute(SCI_LINEFROMPOSITION, notification->position);
+
+			if (notification->margin == ScintillaEditView::_SC_MARGE_FOLDER)
+			{
+				_pEditView->marginClick(notification->position, notification->modifiers);
+				if (_pDocMap)
+					_pDocMap->fold(lineClick, _pEditView->isFolded(lineClick));
+
+				ScintillaEditView* unfocusView = isFromPrimary ? &_subEditView : &_mainEditView;
+
+				_smartHighlighter.highlightView(_pEditView, unfocusView);
+			}
+			else if ((notification->margin == ScintillaEditView::_SC_MARGE_SYMBOL) && !notification->modifiers)
+			{
+				if (!_pEditView->hidelineMarkerClicked(lineClick))
+					bookmarkToggle(lineClick);
+			}
 			break;
 		}
 
-		case SCN_KEY:
+		case SCN_MARGINRIGHTCLICK:
 		{
+			if (!notifyView) return FALSE;
+
+			if (notification->nmhdr.hwndFrom == _mainEditView.getHSelf())
+				switchEditViewTo(MAIN_VIEW);
+			else if (notification->nmhdr.hwndFrom == _subEditView.getHSelf())
+				switchEditViewTo(SUB_VIEW);
+
+			if ((notification->margin == ScintillaEditView::_SC_MARGE_SYMBOL) && !notification->modifiers)
+			{
+				POINT p;
+				::GetCursorPos(&p);
+				const MenuPosition& menuPos = MenuPosition::getMenuPosition("search-bookmark");
+				HMENU hSearchMenu = ::GetSubMenu(_mainMenuHandle, menuPos._x);
+				if (hSearchMenu)
+				{
+					HMENU hBookmarkMenu = ::GetSubMenu(hSearchMenu, menuPos._y);
+					if (hBookmarkMenu)
+					{
+						TrackPopupMenu(hBookmarkMenu, 0, p.x, p.y, 0, _pPublicInterface->getHSelf(), NULL);
+					}
+				}
+			}
 			break;
+		}
+
+		case SCN_CHARADDED:
+		{
+			if (!notifyView) return FALSE;
+
+			if (!_recordingMacro && !_playingBackMacro) // No macro recording or playing back
+			{
+				const NppGUI& nppGui = NppParameters::getInstance().getNppGUI();
+				if (nppGui._maintainIndent != autoIndent_none)
+					maintainIndentation(static_cast<wchar_t>(notification->ch));
+
+				Buffer* currentBuf = _pEditView->getCurrentBuffer();
+				if (currentBuf->allowAutoCompletion())
+				{
+					AutoCompletion* autoC = isFromPrimary ? &_autoCompleteMain : &_autoCompleteSub;
+					bool isColumnMode = _pEditView->execute(SCI_GETSELECTIONS) > 1; // Multi-Selection || Column mode)
+					if (nppGui._matchedPairConf.hasAnyPairsPair() && !isColumnMode)
+						autoC->insertMatchedChars(notification->ch, nppGui._matchedPairConf);
+					autoC->update(notification->ch);
+				}
+			}
+			break;
+		}
+
+		case SCN_DOUBLECLICK:
+		{
+			if (!notifyView) return FALSE;
+
+			if (notification->modifiers == SCMOD_CTRL)
+			{
+				const NppGUI& nppGUI = NppParameters::getInstance().getNppGUI();
+
+				std::string bufstring;
+
+				size_t position_of_click;
+				// For some reason Ctrl+DoubleClick on an empty line means that notification->position == 1.
+				// In that case we use SCI_GETCURRENTPOS to get the position.
+				if (notification->position != -1)
+					position_of_click = notification->position;
+				else
+					position_of_click = _pEditView->execute(SCI_GETCURRENTPOS);
+
+				// Anonymous scope to limit use of the buf pointer (much easier to deal with std::string).
+				{
+					char* buf;
+
+					if (nppGUI._delimiterSelectionOnEntireDocument)
+					{
+						// Get entire document.
+						auto length = notifyView->execute(SCI_GETLENGTH);
+						buf = new char[length + 1];
+						notifyView->execute(SCI_GETTEXT, length + 1, reinterpret_cast<LPARAM>(buf));
+					}
+					else
+					{
+						// Get single line.
+						auto length = notifyView->execute(SCI_GETCURLINE);
+						buf = new char[length + 1];
+						notifyView->execute(SCI_GETCURLINE, length, reinterpret_cast<LPARAM>(buf));
+
+						// Compute the position of the click (relative to the beginning of the line).
+						const auto line_position = notifyView->execute(SCI_POSITIONFROMLINE, notifyView->getCurrentLineNumber());
+						position_of_click = position_of_click - line_position;
+					}
+
+					bufstring = buf;
+					delete[] buf;
+				}
+
+				int leftmost_position = -1;
+				int rightmost_position = -1;
+
+				if (nppGUI._rightmostDelimiter == nppGUI._leftmostDelimiter)
+				{
+					// If the delimiters are the same (e.g. they are both a quotation mark), choose the ones
+					// which are closest to the clicked position.
+					for (int32_t i = static_cast<int32_t>(position_of_click); i >= 0; --i)
+					{
+						if (i >= static_cast<int32_t>(bufstring.size()))
+							return FALSE;
+
+						if (bufstring.at(i) == nppGUI._leftmostDelimiter)
+						{
+							// Respect escaped quotation marks.
+							if (nppGUI._leftmostDelimiter == '"')
+							{
+								if (!(i > 0 && bufstring.at(i - 1) == '\\'))
+								{
+									leftmost_position = i;
+									break;
+								}
+							}
+							else
+							{
+								leftmost_position = i;
+								break;
+							}
+						}
+					}
+
+					if (leftmost_position == -1)
+						break;
+
+					// Scan for right delimiter.
+					for (size_t i = position_of_click; i < bufstring.length(); ++i)
+					{
+						if (bufstring.at(i) == nppGUI._rightmostDelimiter)
+						{
+							// Respect escaped quotation marks.
+							if (nppGUI._rightmostDelimiter == '"')
+							{
+								if (!(i > 0 && bufstring.at(i - 1) == '\\'))
+								{
+									rightmost_position = static_cast<int32_t>(i);
+									break;
+								}
+							}
+							else
+							{
+								rightmost_position = static_cast<int32_t>(i);
+								break;
+							}
+						}
+					}
+				}
+				else
+				{
+					// Find matching pairs of delimiters (e.g. parentheses).
+					// The pair where the distance from the left delimiter to position_of_click is at a minimum is the one we're looking for.
+					// Of course position_of_click must lie between the delimiters.
+
+					// This logic is required to handle cases like this:
+					// (size_t i = function(); i < _buffers.size(); i++)
+
+					std::stack<unsigned int> leftmost_delimiter_positions;
+
+					for (unsigned int i = 0; i < bufstring.length(); ++i)
+					{
+						if (bufstring.at(i) == nppGUI._leftmostDelimiter)
+							leftmost_delimiter_positions.push(i);
+						else if (bufstring.at(i) == nppGUI._rightmostDelimiter && !leftmost_delimiter_positions.empty())
+						{
+							unsigned int matching_leftmost = leftmost_delimiter_positions.top();
+							leftmost_delimiter_positions.pop();
+
+							// We have either 1) chosen neither the left- or rightmost position, or 2) chosen both left- and rightmost position.
+							assert((leftmost_position == -1 && rightmost_position == -1) || (leftmost_position >= 0 && rightmost_position >= 0));
+
+							// Note: cast of leftmost_position to unsigned int is safe, since if leftmost_position is not -1 then it is guaranteed to be positive.
+							// If it was possible, leftmost_position and rightmost_position should be of type optional<unsigned int>.
+							if (matching_leftmost <= position_of_click && i >= position_of_click && (leftmost_position == -1 || matching_leftmost > static_cast<unsigned int>(leftmost_position)))
+							{
+								leftmost_position = matching_leftmost;
+								rightmost_position = i;
+							}
+						}
+					}
+				}
+
+				// Set selection to the position we found (if any).
+				if (rightmost_position != -1 && leftmost_position != -1)
+				{
+					if (nppGUI._delimiterSelectionOnEntireDocument)
+					{
+						notifyView->execute(SCI_SETCURRENTPOS, rightmost_position);
+						notifyView->execute(SCI_SETANCHOR, leftmost_position + 1);
+					}
+					else
+					{
+						const auto line_position = notifyView->execute(SCI_POSITIONFROMLINE, notifyView->getCurrentLineNumber());
+						notifyView->execute(SCI_SETCURRENTPOS, line_position + rightmost_position);
+						notifyView->execute(SCI_SETANCHOR, line_position + leftmost_position + 1);
+					}
+				}
+			}
+			else
+			{ // Double click with no modifiers
+				// Check whether cursor is within URL
+				auto indicMsk = notifyView->execute(SCI_INDICATORALLONFOR, notification->position);
+				if (!(indicMsk & (1 << URL_INDIC)))
+					break;
+
+				auto startPos = notifyView->execute(SCI_INDICATORSTART, URL_INDIC, notification->position);
+				auto endPos = notifyView->execute(SCI_INDICATOREND, URL_INDIC, notification->position);
+				if ((notification->position < startPos) || (notification->position > endPos))
+					break;
+
+				// WM_LBUTTONUP goes to opening browser instead of Scintilla here, because the mouse is not captured.
+				// The missing message causes mouse cursor flicker as soon as the mouse cursor is moved to a position outside the text editing area.
+				::PostMessage(notifyView->getHSelf(), WM_LBUTTONUP, 0, 0);
+
+				// Revert selection of current word. Best to this early, otherwise the
+				// selected word is visible all the time while the browser is starting
+				notifyView->execute(SCI_SETSEL, notification->position, notification->position);
+
+				// Open URL
+				wstring url = notifyView->getGenericTextAsString(static_cast<size_t>(startPos), static_cast<size_t>(endPos));
+				::ShellExecute(_pPublicInterface->getHSelf(), L"open", url.c_str(), NULL, NULL, SW_SHOW);
+			}
+			break;
+		}
+
+		case SCN_UPDATEUI:
+		{
+			if (!notifyView) return FALSE;
+
+			NppParameters& nppParam = NppParameters::getInstance();
+			NppGUI& nppGui = nppParam.getNppGUI();
+
+			Buffer* currentBuf = notifyView->getCurrentBuffer();
+			
+			// replacement for obsolete custom SCN_SCROLLED
+			if (notification->updated & SC_UPDATE_V_SCROLL)
+			{
+				int urlAction = (NppParameters::getInstance()).getNppGUI()._styleURL;
+				if (urlAction != urlDisable && currentBuf->allowClickableLink())
+				{
+					addHotSpot(notifyView);
+				}
+			}
+
+			// if it's searching/replacing, then do nothing
+			if (nppParam._isFindReplacing)
+				break;
+
+			if (notification->nmhdr.hwndFrom != _pEditView->getHSelf() && currentBuf->allowSmartHilite()) // notification come from unfocus view - both views are visible
+			{
+				if (nppGui._smartHiliteOnAnotherView)
+				{
+					auto selectedText = _pEditView->getSelectedTextToWChar(false);
+					if (!selectedText.empty())
+						_smartHighlighter.highlightViewWithWord(notifyView, selectedText.c_str());
+				}
+				break;
+			}
+
+			braceMatch();
+
+			if (nppGui._enableTagsMatchHilite)
+			{
+				XmlMatchedTagsHighlighter xmlTagMatchHiliter(_pEditView);
+				xmlTagMatchHiliter.tagMatch(nppGui._enableTagAttrsHilite);
+			}
+
+			if (nppGui._enableSmartHilite && currentBuf->allowSmartHilite())
+			{
+				if (nppGui._disableSmartHiliteTmp)
+					nppGui._disableSmartHiliteTmp = false;
+				else
+				{
+					ScintillaEditView* anotherView = isFromPrimary ? &_subEditView : &_mainEditView;
+					_smartHighlighter.highlightView(notifyView, anotherView);
+				}
+			}
+
+			bool selectionIsChanged = (notification->updated & SC_UPDATE_SELECTION) != 0;
+			// note: changing insert/overwrite mode will cause Scintilla to notify with SC_UPDATE_SELECTION
+			bool contentIsChanged = (notification->updated & SC_UPDATE_CONTENT) != 0;
+			if (selectionIsChanged || contentIsChanged)
+			{
+				updateStatusBar();
+			}
+
+			if (_pFuncList && (!_pFuncList->isClosed()) && _pFuncList->isVisible())
+				_pFuncList->markEntry();
+			AutoCompletion* autoC = isFromPrimary ? &_autoCompleteMain : &_autoCompleteSub;
+			autoC->update(0);
+
+			break;
+		}
+
+		case SCN_ZOOM:
+		{
+			if (!notifyView) return FALSE;
+
+			ScintillaEditView* unfocusView = isFromPrimary ? &_subEditView : &_mainEditView;
+			_smartHighlighter.highlightView(notifyView, unfocusView);
+			break;
+		}
+
+		case SCN_MACRORECORD:
+		{
+			// Normalize EOL by replacing macro step using SCI_REPLACESEL
+			// with lParam representing string of one char with '\n' or '\r'
+			// with step using SCI_NEWLINE which is document context aware and will insert correct EOL.
+			if (notification->message == SCI_REPLACESEL)
+			{
+				const auto* ch = reinterpret_cast<char*>(notification->lParam);
+				if (ch != nullptr
+					&& ch[0] != '\0' // is not ""
+					&& ch[1] == '\0' // is length == 1
+					&& (ch[0] == '\n' || ch[0] == '\r')) // is EOL
+				{
+					// Current detected EOL is LF and document has CRLF,
+					// previous detected step using SCI_REPLACESEL with CR was already replaced by SCI_NEWLINE.
+					// To avoid double newlines, the previous macro step is removed.
+					if (_pEditView->getCurrentBuffer()->getEolFormat() == EolType::windows
+						&& ch[0] == '\n'
+						&& !_macro.empty()
+						&& _macro.back()._message == SCI_NEWLINE)
+					{
+						_macro.pop_back();
+					}
+
+					_macro.push_back(recordedMacroStep(SCI_NEWLINE, 0, 0, nullptr, 0));
+					break;
+				}
+			}
+
+			_macro.push_back(
+				recordedMacroStep(
+					notification->message,
+					notification->wParam,
+					notification->lParam
+				)
+			);
+			break;
+		}
+
+		case SCN_PAINTED:
+		{
+			if (!notifyView) return FALSE;
+
+			// Check if a restore position is needed. 
+			// Restoring a position must done after SCN_PAINTED notification so that it works in every circumstances (including wrapped large file)
+			_mainEditView.restoreCurrentPosPostStep();
+			_subEditView.restoreCurrentPosPostStep();
+
+			// ViewMoveAtWrappingDisableFix: Disable wrapping messes up visible lines.
+			// Therefore save view position before in IDM_VIEW_WRAP and restore after SCN_PAINTED, as doc. says
+			if (_mainEditView.isWrapRestoreNeeded())
+			{
+				_mainEditView.restoreCurrentPosPreStep();
+				_mainEditView.setWrapRestoreNeeded(false);
+			}
+
+			if (_subEditView.isWrapRestoreNeeded())
+			{
+				_subEditView.restoreCurrentPosPreStep();
+				_subEditView.setWrapRestoreNeeded(false);
+			}
+
+			notifyView->updateLineNumberWidth();
+
+			if (_syncInfo.doSync())
+				doSynScroll(HWND(notification->nmhdr.hwndFrom));
+
+			const NppParameters& nppParam = NppParameters::getInstance();
+
+			// if it's searching/replacing, then do nothing
+			if ((_linkTriggered && !nppParam._isFindReplacing) || notification->wParam == LINKTRIGGERED)
+			{
+				int urlAction = (NppParameters::getInstance()).getNppGUI()._styleURL;
+				Buffer* currentBuf = _pEditView->getCurrentBuffer();
+				if (urlAction != urlDisable && currentBuf->allowClickableLink())
+				{
+					addHotSpot();
+				}
+				_linkTriggered = false;
+			}
+
+			if (_pDocMap && (!_pDocMap->isClosed()) && _pDocMap->isVisible() && !_pDocMap->isTemporarilyShowing())
+			{
+				_pDocMap->wrapMap();
+				_pDocMap->scrollMap();
+			}
+			break;
+		}
+
+		case SCN_CALLTIPCLICK:
+		{
+			if (!notifyView) return FALSE;
+
+			AutoCompletion* autoC = isFromPrimary ? &_autoCompleteMain : &_autoCompleteSub;
+			autoC->callTipClick(notification->position);
+			break;
+		}
+
+		case SCN_AUTOCSELECTION:
+		{
+			if (!notifyView) return FALSE;
+
+			const NppGUI& nppGui = NppParameters::getInstance().getNppGUI();
+
+			// if autocompletion is disabled and it is triggered manually, then both ENTER & TAB will insert the selection 
+			if (nppGui._autocStatus == NppGUI::AutocStatus::autoc_none)
+			{
+				break;
+			}
+
+			if (notification->listCompletionMethod == SC_AC_NEWLINE && !nppGui._autocInsertSelectedUseENTER)
+			{
+				notifyView->execute(SCI_AUTOCCANCEL);
+				notifyView->execute(SCI_NEWLINE);
+			}
+
+			if (notification->listCompletionMethod == SC_AC_TAB && !nppGui._autocInsertSelectedUseTAB)
+			{
+				notifyView->execute(SCI_AUTOCCANCEL);
+				notifyView->execute(SCI_TAB);
+			}
+			break;
+		}
+
+		//
+		// ======= End of SCN_*
+		//
+
+		case SCN_FOLDINGSTATECHANGED: // Notification not part of Scintilla, but Notepad++ added
+		{
+			if ((notification->nmhdr.hwndFrom == _mainEditView.getHSelf()) || (notification->nmhdr.hwndFrom == _subEditView.getHSelf()))
+			{
+				size_t lineClicked = notification->line;
+
+				/*
+				if (!_isFolding)
+				{
+					int urlAction = (NppParameters::getInstance()).getNppGUI()._styleURL;
+					Buffer* currentBuf = _pEditView->getCurrentBuffer();
+					if (urlAction != urlDisable && currentBuf->allowClickableLink())
+					{
+						addHotSpot();
+					}
+				}
+				*/
+
+				if (_pDocMap)
+					_pDocMap->fold(lineClicked, _pEditView->isFolded(lineClicked));
+			}
+
+			return TRUE;
 		}
 
 		case TCN_MOUSEHOVERING:
@@ -317,14 +808,48 @@ BOOL Notepad_plus::notify(SCNotification *notification)
 			int index = tabNotification->_tabOrigin;
 			BufferID bufferToClose = notifyDocTab->getBufferByIndex(index);
 			Buffer * buf = MainFileManager.getBufferByID(bufferToClose);
-			int iView = isFromPrimary?MAIN_VIEW:SUB_VIEW;
+			int iView = isFromPrimary ? MAIN_VIEW : SUB_VIEW;
 			if (buf->isDirty())
 			{
 				activateBuffer(bufferToClose, iView);
 			}
 
-			if (fileClose(bufferToClose, iView))
+			BufferID bufferToClose2ndCheck = notifyDocTab->getBufferByIndex(index);
+
+			if ((bufferToClose == bufferToClose2ndCheck) // Here we make sure the buffer is the same to prevent from the situation that the buffer to be close was already closed,
+			                                             // because the preceding call "activateBuffer(bufferToClose, iView)" could finally lead "doClose" call as well (in case of file non-existent).
+				&& fileClose(bufferToClose, iView))
 				checkDocState();
+
+			break;
+		}
+
+		case TCN_TABPINNED:
+		{
+			int index = tabNotification->_tabOrigin;
+			BufferID bufferToBePinned = notifyDocTab->getBufferByIndex(index);
+			Buffer * buf = MainFileManager.getBufferByID(bufferToBePinned);
+
+			bool isPinned = buf->isPinned();
+
+			if (_mainDocTab.getHSelf() == notification->nmhdr.hwndFrom)
+			{
+				if (!isPinned)
+					_mainDocTab.tabToStart(index);
+				else
+					_mainDocTab.tabToEnd(index);
+			}
+			else if (_subDocTab.getHSelf() == notification->nmhdr.hwndFrom)
+			{
+				if (!isPinned)
+					_subDocTab.tabToStart(index);
+				else
+					_subDocTab.tabToEnd(index);
+			}
+			else
+				return FALSE;
+
+			buf->setPinned(!isPinned);
 
 			break;
 		}
@@ -409,10 +934,7 @@ BOOL Notepad_plus::notify(SCNotification *notification)
 				LPNMMOUSE lpnm = (LPNMMOUSE)notification;
 				if (lpnm->dwItemSpec == DWORD(STATUSBAR_CUR_POS))
 				{
-					bool isFirstTime = !_goToLineDlg.isCreated();
-					_goToLineDlg.doDialog(_nativeLangSpeaker.isRTL());
-					if (isFirstTime)
-						_nativeLangSpeaker.changeDlgLang(_goToLineDlg.getHSelf(), "GoToLine");
+					command(IDM_SEARCH_GOTOLINE);
 				}
 				else if (lpnm->dwItemSpec == DWORD(STATUSBAR_DOC_SIZE))
 				{
@@ -429,7 +951,7 @@ BOOL Notepad_plus::notify(SCNotification *notification)
 				{
 					POINT p;
 					::GetCursorPos(&p);
-					MenuPosition & menuPos = getMenuPosition("edit-eolConversion");
+					const MenuPosition& menuPos = MenuPosition::getMenuPosition("edit-eolConversion");
 					HMENU hEditMenu = ::GetSubMenu(_mainMenuHandle, menuPos._x);
 					if (!hEditMenu)
 						return TRUE;
@@ -472,7 +994,7 @@ BOOL Notepad_plus::notify(SCNotification *notification)
 				}
 				else if (lpnm->dwItemSpec == DWORD(STATUSBAR_EOF_FORMAT))
 				{
-					MenuPosition & menuPos = getMenuPosition("edit-eolConversion");
+					const MenuPosition& menuPos = MenuPosition::getMenuPosition("edit-eolConversion");
 					HMENU hEditMenu = ::GetSubMenu(_mainMenuHandle, menuPos._x);
 					if (!hEditMenu)
 						return TRUE;
@@ -537,9 +1059,11 @@ BOOL Notepad_plus::notify(SCNotification *notification)
 					
 					itemUnitArray.push_back(MenuItemUnit(IDM_FILE_CLOSE, L"Close"));
 					itemUnitArray.push_back(MenuItemUnit(IDM_FILE_CLOSEALL_BUT_CURRENT, L"Close All BUT This", L"Close Multiple Tabs"));
+					itemUnitArray.push_back(MenuItemUnit(IDM_FILE_CLOSEALL_BUT_PINNED, L"Close All BUT Pinned", L"Close Multiple Tabs"));
 					itemUnitArray.push_back(MenuItemUnit(IDM_FILE_CLOSEALL_TOLEFT, L"Close All to the Left", L"Close Multiple Tabs"));
 					itemUnitArray.push_back(MenuItemUnit(IDM_FILE_CLOSEALL_TORIGHT, L"Close All to the Right", L"Close Multiple Tabs"));
 					itemUnitArray.push_back(MenuItemUnit(IDM_FILE_CLOSEALL_UNCHANGED, L"Close All Unchanged", L"Close Multiple Tabs"));
+					itemUnitArray.push_back(MenuItemUnit(IDM_PINTAB, L"Pin Tab"));
 					itemUnitArray.push_back(MenuItemUnit(IDM_FILE_SAVE, L"Save"));
 					itemUnitArray.push_back(MenuItemUnit(IDM_FILE_SAVEAS, L"Save As..."));
 					itemUnitArray.push_back(MenuItemUnit(IDM_FILE_OPEN_FOLDER, L"Open Containing Folder in Explorer", L"Open into"));
@@ -552,8 +1076,8 @@ BOOL Notepad_plus::notify(SCNotification *notification)
 					itemUnitArray.push_back(MenuItemUnit(IDM_FILE_RELOAD, L"Reload"));
 					itemUnitArray.push_back(MenuItemUnit(IDM_FILE_PRINT, L"Print"));
 					itemUnitArray.push_back(MenuItemUnit(0, NULL));
-					itemUnitArray.push_back(MenuItemUnit(IDM_EDIT_SETREADONLY, L"Read-Only"));
-					itemUnitArray.push_back(MenuItemUnit(IDM_EDIT_CLEARREADONLY, L"Clear Read-Only Flag"));
+					itemUnitArray.push_back(MenuItemUnit(IDM_EDIT_TOGGLEREADONLY, L"Read-Only in Notepad++"));
+					itemUnitArray.push_back(MenuItemUnit(IDM_EDIT_TOGGLESYSTEMREADONLY, L"Read-Only Attribute in Windows"));
 					itemUnitArray.push_back(MenuItemUnit(0, NULL));
 					itemUnitArray.push_back(MenuItemUnit(IDM_EDIT_FULLPATHTOCLIP, L"Copy Full File Path", L"Copy to Clipboard"));
 					itemUnitArray.push_back(MenuItemUnit(IDM_EDIT_FILENAMETOCLIP, L"Copy Filename", L"Copy to Clipboard"));
@@ -581,7 +1105,7 @@ BOOL Notepad_plus::notify(SCNotification *notification)
 			// Adds colour icons
 			for (int i = 0; i < 5; ++i)
 			{
-				COLORREF colour = nppParam.getIndividualTabColor(i, NppDarkMode::isDarkMenuEnabled(), true);
+				COLORREF colour = nppParam.getIndividualTabColor(i, NppDarkMode::isEnabled(), true);
 				HBITMAP hBitmap = generateSolidColourMenuItemIcon(colour);
 				SetMenuItemBitmaps(_tabPopupMenu.getMenuHandle(), IDM_VIEW_TAB_COLOUR_1 + i, MF_BYCOMMAND, hBitmap, hBitmap);
 			}
@@ -589,16 +1113,25 @@ BOOL Notepad_plus::notify(SCNotification *notification)
 			bool isEnable = ((::GetMenuState(_mainMenuHandle, IDM_FILE_SAVE, MF_BYCOMMAND)&MF_DISABLED) == 0);
 			_tabPopupMenu.enableItem(IDM_FILE_SAVE, isEnable);
 
-			Buffer * buf = _pEditView->getCurrentBuffer();
+			Buffer* buf = _pEditView->getCurrentBuffer();
 			bool isUserReadOnly = buf->getUserReadOnly();
-			_tabPopupMenu.checkItem(IDM_EDIT_SETREADONLY, isUserReadOnly);
+			_tabPopupMenu.checkItem(IDM_EDIT_TOGGLEREADONLY, isUserReadOnly);
 
 			bool isSysReadOnly = buf->getFileReadOnly();
 			bool isInaccessible = buf->isInaccessible();
-			_tabPopupMenu.enableItem(IDM_EDIT_SETREADONLY, !isSysReadOnly && !buf->isMonitoringOn());
-			_tabPopupMenu.enableItem(IDM_EDIT_CLEARREADONLY, isSysReadOnly);
-			if (isInaccessible)
-				_tabPopupMenu.enableItem(IDM_EDIT_CLEARREADONLY, false);
+			bool isUntitled = buf->isUntitled();
+			_tabPopupMenu.enableItem(IDM_EDIT_TOGGLEREADONLY, !isSysReadOnly && !buf->isMonitoringOn() &&
+				!(nppParam.getNppGUI()._isFullReadOnlySavingForbidden));
+			if (isInaccessible || isUntitled)
+			{
+				_tabPopupMenu.checkItem(IDM_EDIT_TOGGLESYSTEMREADONLY, false);
+				_tabPopupMenu.enableItem(IDM_EDIT_TOGGLESYSTEMREADONLY, false);
+			}
+			else
+			{
+				_tabPopupMenu.enableItem(IDM_EDIT_TOGGLESYSTEMREADONLY, true);
+				_tabPopupMenu.checkItem(IDM_EDIT_TOGGLESYSTEMREADONLY, isSysReadOnly);
+			}
 
 			bool isFileExisting = doesFileExist(buf->getFullPathName());
 			_tabPopupMenu.enableItem(IDM_FILE_DELETE, isFileExisting);
@@ -610,7 +1143,6 @@ BOOL Notepad_plus::notify(SCNotification *notification)
 			_tabPopupMenu.enableItem(IDM_FILE_OPEN_DEFAULT_VIEWER, isAssoCommandExisting(buf->getFullPathName()));
 
 			bool isDirty = buf->isDirty();
-			bool isUntitled = buf->isUntitled();
 			_tabPopupMenu.enableItem(IDM_VIEW_GOTO_ANOTHER_VIEW, !isInaccessible);
 			_tabPopupMenu.enableItem(IDM_VIEW_CLONE_TO_ANOTHER_VIEW, !isInaccessible);
 			_tabPopupMenu.enableItem(IDM_VIEW_GOTO_NEW_INSTANCE, !isInaccessible && !isDirty && !isUntitled);
@@ -618,344 +1150,37 @@ BOOL Notepad_plus::notify(SCNotification *notification)
 
 			_tabPopupMenu.enableItem(IDM_FILE_SAVEAS, !isInaccessible);
 			_tabPopupMenu.enableItem(IDM_FILE_RENAME, !isInaccessible);
+			
+			NppGUI& nppGUI = NppParameters::getInstance().getNppGUI();
+			bool isTabPinEnabled = nppGUI._tabStatus & TAB_PINBUTTON;
+			wstring newName;
+			if (isTabPinEnabled)
+			{
+				wstring defaultName;
+				bool isAlternative;
+				if (buf->isPinned())
+				{
+					defaultName = L"Unpin Tab";
+					isAlternative = true;
+				}
+				else
+				{
+					defaultName = L"Pin Tab";
+					isAlternative = false;
+				}
+				_nativeLangSpeaker.getAlternativeNameFromTabContextMenu(newName, IDM_PINTAB, isAlternative, defaultName);
+				::ModifyMenu(_tabPopupMenu.getMenuHandle(), IDM_PINTAB, MF_BYCOMMAND, IDM_PINTAB, newName.c_str());
+			}
+			else
+			{
+				_nativeLangSpeaker.getAlternativeNameFromTabContextMenu(newName, IDM_PINTAB, false, L"Pin Tab");
+				::ModifyMenu(_tabPopupMenu.getMenuHandle(), IDM_PINTAB, MF_BYCOMMAND, IDM_PINTAB, newName.c_str());
+			}
+
+			_tabPopupMenu.enableItem(IDM_PINTAB, isTabPinEnabled);
 
 			_tabPopupMenu.display(p);
 			return TRUE;
-		}
-
-
-		case SCN_MARGINCLICK:
-		{
-			if (notification->nmhdr.hwndFrom == _mainEditView.getHSelf())
-				switchEditViewTo(MAIN_VIEW);
-			else if (notification->nmhdr.hwndFrom == _subEditView.getHSelf())
-				switchEditViewTo(SUB_VIEW);
-
-			intptr_t lineClick = _pEditView->execute(SCI_LINEFROMPOSITION, notification->position);
-
-			if (notification->margin == ScintillaEditView::_SC_MARGE_FOLDER)
-			{
-				_pEditView->marginClick(notification->position, notification->modifiers);
-				if (_pDocMap)
-					_pDocMap->fold(lineClick, _pEditView->isFolded(lineClick));
-
-				ScintillaEditView * unfocusView = isFromPrimary ? &_subEditView : &_mainEditView;
-
-				_smartHighlighter.highlightView(_pEditView, unfocusView);
-			}
-			else if ((notification->margin == ScintillaEditView::_SC_MARGE_SYMBOL) && !notification->modifiers)
-			{
-				if (!_pEditView->markerMarginClick(lineClick))
-					bookmarkToggle(lineClick);
-			}
-			break;
-		}
-
-		case SCN_MARGINRIGHTCLICK:
-		{
-			if (notification->nmhdr.hwndFrom == _mainEditView.getHSelf())
-				switchEditViewTo(MAIN_VIEW);
-			else if (notification->nmhdr.hwndFrom == _subEditView.getHSelf())
-				switchEditViewTo(SUB_VIEW);
-
-			if ((notification->margin == ScintillaEditView::_SC_MARGE_SYMBOL) && !notification->modifiers)
-			{
-				POINT p;
-				::GetCursorPos(&p);
-				MenuPosition& menuPos = getMenuPosition("search-bookmark");
-				HMENU hSearchMenu = ::GetSubMenu(_mainMenuHandle, menuPos._x);
-				if (hSearchMenu)
-				{
-					HMENU hBookmarkMenu = ::GetSubMenu(hSearchMenu, menuPos._y);
-					if (hBookmarkMenu)
-					{
-						TrackPopupMenu(hBookmarkMenu, 0, p.x, p.y, 0, _pPublicInterface->getHSelf(), NULL);
-					}
-				}
-			}
-			break;
-		}
-
-		case SCN_FOLDINGSTATECHANGED :
-		{
-			if ((notification->nmhdr.hwndFrom == _mainEditView.getHSelf()) || (notification->nmhdr.hwndFrom == _subEditView.getHSelf()))
-			{
-				size_t lineClicked = notification->line;
-
-				if (!_isFolding)
-				{
-					addHotSpot();
-				}
-
-				if (_pDocMap)
-					_pDocMap->fold(lineClicked, _pEditView->isFolded(lineClicked));
-			}
-			return TRUE;
-		}
-
-		case SCN_CHARADDED:
-		{
-			if (!_recordingMacro && !_playingBackMacro) // No macro recording or playing back
-			{
-				const NppGUI & nppGui = NppParameters::getInstance().getNppGUI();
-				if (nppGui._maintainIndent != autoIndent_none)
-					maintainIndentation(static_cast<wchar_t>(notification->ch));
-
-				Buffer* currentBuf = _pEditView->getCurrentBuffer();
-				if (currentBuf->allowAutoCompletion())
-				{
-					AutoCompletion* autoC = isFromPrimary ? &_autoCompleteMain : &_autoCompleteSub;
-					bool isColumnMode = _pEditView->execute(SCI_GETSELECTIONS) > 1; // Multi-Selection || Column mode)
-					if (nppGui._matchedPairConf.hasAnyPairsPair() && !isColumnMode)
-						autoC->insertMatchedChars(notification->ch, nppGui._matchedPairConf);
-					autoC->update(notification->ch);
-				}
-			}
-			break;
-		}
-
-		case SCN_DOUBLECLICK:
-		{
-			if (!notifyView)
-				return FALSE;
-
-			if (notification->modifiers == SCMOD_CTRL)
-			{
-				const NppGUI & nppGUI = NppParameters::getInstance().getNppGUI();
-
-				std::string bufstring;
-
-				size_t position_of_click;
-				// For some reason Ctrl+DoubleClick on an empty line means that notification->position == 1.
-				// In that case we use SCI_GETCURRENTPOS to get the position.
-				if (notification->position != -1)
-					position_of_click = notification->position;
-				else
-					position_of_click = _pEditView->execute(SCI_GETCURRENTPOS);
-
-				// Anonymous scope to limit use of the buf pointer (much easier to deal with std::string).
-				{
-					char *buf;
-
-					if (nppGUI._delimiterSelectionOnEntireDocument)
-					{
-						// Get entire document.
-						auto length = notifyView->execute(SCI_GETLENGTH);
-						buf = new char[length + 1];
-						notifyView->execute(SCI_GETTEXT, length + 1, reinterpret_cast<LPARAM>(buf));
-					}
-					else
-					{
-						// Get single line.
-						auto length = notifyView->execute(SCI_GETCURLINE);
-						buf = new char[length + 1];
-						notifyView->execute(SCI_GETCURLINE, length, reinterpret_cast<LPARAM>(buf));
-
-						// Compute the position of the click (relative to the beginning of the line).
-						const auto line_position = notifyView->execute(SCI_POSITIONFROMLINE, notifyView->getCurrentLineNumber());
-						position_of_click = position_of_click - line_position;
-					}
-
-					bufstring = buf;
-					delete [] buf;
-				}
-
-				int leftmost_position = -1;
-				int rightmost_position = -1;
-
-				if (nppGUI._rightmostDelimiter == nppGUI._leftmostDelimiter)
-				{
-					// If the delimiters are the same (e.g. they are both a quotation mark), choose the ones
-					// which are closest to the clicked position.
-					for (int32_t i = static_cast<int32_t>(position_of_click); i >= 0; --i)
-					{
-						if (i >= static_cast<int32_t>(bufstring.size()))
-							return FALSE;
-
-						if (bufstring.at(i) == nppGUI._leftmostDelimiter)
-						{
-							// Respect escaped quotation marks.
-							if (nppGUI._leftmostDelimiter == '"')
-							{
-								if (! (i > 0 && bufstring.at(i - 1) == '\\'))
-								{
-									leftmost_position = i;
-									break;
-								}
-							}
-							else
-							{
-								leftmost_position = i;
-								break;
-							}
-						}
-					}
-
-					if (leftmost_position == -1)
-						break;
-
-					// Scan for right delimiter.
-					for (size_t i = position_of_click; i < bufstring.length(); ++i)
-					{
-						if (bufstring.at(i) == nppGUI._rightmostDelimiter)
-						{
-							// Respect escaped quotation marks.
-							if (nppGUI._rightmostDelimiter == '"')
-							{
-								if (! (i > 0 && bufstring.at(i - 1) == '\\'))
-								{
-									rightmost_position = static_cast<int32_t>(i);
-									break;
-								}
-							}
-							else
-							{
-								rightmost_position = static_cast<int32_t>(i);
-								break;
-							}
-						}
-					}
-				}
-				else
-				{
-					// Find matching pairs of delimiters (e.g. parentheses).
-					// The pair where the distance from the left delimiter to position_of_click is at a minimum is the one we're looking for.
-					// Of course position_of_click must lie between the delimiters.
-
-					// This logic is required to handle cases like this:
-					// (size_t i = function(); i < _buffers.size(); i++)
-
-					std::stack<unsigned int> leftmost_delimiter_positions;
-
-					for (unsigned int i = 0; i < bufstring.length(); ++i)
-					{
-						if (bufstring.at(i) == nppGUI._leftmostDelimiter)
-							leftmost_delimiter_positions.push(i);
-						else if (bufstring.at(i) == nppGUI._rightmostDelimiter && ! leftmost_delimiter_positions.empty())
-						{
-							unsigned int matching_leftmost = leftmost_delimiter_positions.top();
-							leftmost_delimiter_positions.pop();
-
-							// We have either 1) chosen neither the left- or rightmost position, or 2) chosen both left- and rightmost position.
-							assert( (leftmost_position == -1 && rightmost_position == -1) || (leftmost_position >= 0 && rightmost_position >= 0) );
-
-							// Note: cast of leftmost_position to unsigned int is safe, since if leftmost_position is not -1 then it is guaranteed to be positive.
-							// If it was possible, leftmost_position and rightmost_position should be of type optional<unsigned int>.
-							if (matching_leftmost <= position_of_click && i >= position_of_click && (leftmost_position == -1 || matching_leftmost > static_cast<unsigned int>(leftmost_position)))
-							{
-								leftmost_position = matching_leftmost;
-								rightmost_position = i;
-							}
-						}
-					}
-				}
-
-				// Set selection to the position we found (if any).
-				if (rightmost_position != -1 && leftmost_position != -1)
-				{
-					if (nppGUI._delimiterSelectionOnEntireDocument)
-					{
-						notifyView->execute(SCI_SETCURRENTPOS, rightmost_position);
-						notifyView->execute(SCI_SETANCHOR, leftmost_position + 1);
-					}
-					else
-					{
-						const auto line_position = notifyView->execute(SCI_POSITIONFROMLINE, notifyView->getCurrentLineNumber());
-						notifyView->execute(SCI_SETCURRENTPOS, line_position + rightmost_position);
-						notifyView->execute(SCI_SETANCHOR, line_position + leftmost_position + 1);
-					}
-				}
-			}
-			else
-			{ // Double click with no modifiers
-				// Check whether cursor is within URL
-				auto indicMsk = notifyView->execute(SCI_INDICATORALLONFOR, notification->position);
-				if (!(indicMsk & (1 << URL_INDIC)))
-					break;
-				
-				auto startPos = notifyView->execute(SCI_INDICATORSTART, URL_INDIC, notification->position);
-				auto endPos = notifyView->execute(SCI_INDICATOREND, URL_INDIC, notification->position);
-				if ((notification->position < startPos) || (notification->position > endPos))
-					break;
-
-				// WM_LBUTTONUP goes to opening browser instead of Scintilla here, because the mouse is not captured.
-				// The missing message causes mouse cursor flicker as soon as the mouse cursor is moved to a position outside the text editing area.
-				::PostMessage(notifyView->getHSelf(), WM_LBUTTONUP, 0, 0);
-
-				// Revert selection of current word. Best to this early, otherwise the
-				// selected word is visible all the time while the browser is starting
-				notifyView->execute(SCI_SETSEL, notification->position, notification->position); 
-
-				// Open URL
-				wstring url = notifyView->getGenericTextAsString(static_cast<size_t>(startPos), static_cast<size_t>(endPos));
-				::ShellExecute(_pPublicInterface->getHSelf(), L"open", url.c_str(), NULL, NULL, SW_SHOW);
-			}
-			break;
-		}
-
-		case SCN_UPDATEUI:
-		{
-			if (!notifyView)
-				return FALSE;
-
-			NppParameters& nppParam = NppParameters::getInstance();
-			NppGUI & nppGui = nppParam.getNppGUI();
-
-			// replacement for obsolete custom SCN_SCROLLED
-			if (notification->updated & SC_UPDATE_V_SCROLL)
-			{
-				addHotSpot(notifyView);
-			}
-
-			// if it's searching/replacing, then do nothing
-			if (nppParam._isFindReplacing)
-				break;
-
-			Buffer* currentBuf = _pEditView->getCurrentBuffer();
-			if (notification->nmhdr.hwndFrom != _pEditView->getHSelf() && currentBuf->allowSmartHilite()) // notification come from unfocus view - both views ae visible
-			{
-				if (nppGui._smartHiliteOnAnotherView)
-				{
-					wchar_t selectedText[1024];
-					_pEditView->getGenericSelectedText(selectedText, sizeof(selectedText)/sizeof(wchar_t), false);
-					_smartHighlighter.highlightViewWithWord(notifyView, selectedText);
-				}
-				break;
-			}
-
-			braceMatch();
-
-			if (nppGui._enableTagsMatchHilite)
-			{
-				XmlMatchedTagsHighlighter xmlTagMatchHiliter(_pEditView);
-				xmlTagMatchHiliter.tagMatch(nppGui._enableTagAttrsHilite);
-			}
-			
-			if (nppGui._enableSmartHilite && currentBuf->allowSmartHilite())
-			{
-				if (nppGui._disableSmartHiliteTmp)
-					nppGui._disableSmartHiliteTmp = false;
-				else
-				{
-					ScintillaEditView * anbotherView = isFromPrimary ? &_subEditView : &_mainEditView;
-					_smartHighlighter.highlightView(notifyView, anbotherView);
-				}
-			}
-
-			bool selectionIsChanged = (notification->updated & SC_UPDATE_SELECTION) != 0;
-			// note: changing insert/overwrite mode will cause Scintilla to notify with SC_UPDATE_SELECTION
-			bool contentIsChanged = (notification->updated & SC_UPDATE_CONTENT) != 0;
-			if (selectionIsChanged || contentIsChanged)
-			{
-				updateStatusBar();
-			}
-
-			if (_pFuncList && (!_pFuncList->isClosed()) && _pFuncList->isVisible())
-				_pFuncList->markEntry();
-			AutoCompletion * autoC = isFromPrimary ? &_autoCompleteMain : &_autoCompleteSub;
-			autoC->update(0);
-
-			break;
 		}
 
 		case TTN_GETDISPINFO:
@@ -985,150 +1210,49 @@ BOOL Notepad_plus::notify(SCNotification *notification)
 					wcscpy_s(lpttt->szText, tipTmp.c_str());
 					return TRUE;
 				}
-				else if (hWin == _mainDocTab.getHSelf())
-				{
-					BufferID idd = _mainDocTab.getBufferByIndex(id);
-					Buffer * buf = MainFileManager.getBufferByID(idd);
-					if (buf == nullptr)
-						return FALSE;
-
-					tipTmp = buf->getFullPathName();
-
-					if (tipTmp.length() >= tipMaxLen)
-						return FALSE;
-					wcscpy_s(docTip, tipTmp.c_str());
-					lpttt->lpszText = docTip;
-					return TRUE;
-				}
-				else if (hWin == _subDocTab.getHSelf())
-				{
-					BufferID idd = _subDocTab.getBufferByIndex(id);
-					Buffer * buf = MainFileManager.getBufferByID(idd);
-					if (buf == nullptr)
-						return FALSE;
-
-					tipTmp = buf->getFullPathName();
-
-					if (tipTmp.length() >= tipMaxLen)
-						return FALSE;
-					wcscpy_s(docTip, tipTmp.c_str());
-					lpttt->lpszText = docTip;
-					return TRUE;
-				}
 				else
-					return FALSE;
+				{
+					BufferID idd = BUFFER_INVALID;
+					if (hWin == _mainDocTab.getHSelf())
+						idd = _mainDocTab.getBufferByIndex(id);
+					else if (hWin == _subDocTab.getHSelf())
+						idd = _subDocTab.getBufferByIndex(id);
+					else
+						return FALSE;
+
+					Buffer* buf = MainFileManager.getBufferByID(idd);
+					if (buf == nullptr)
+						return FALSE;
+
+					tipTmp = buf->getFullPathName();
+
+
+					if (buf->isUntitled())
+					{
+						wstring tabCreatedTime = buf->tabCreatedTimeString();
+						if (!tabCreatedTime.empty())
+						{
+							tipTmp += L"\r";
+							tipTmp += tabCreatedTime;
+							SendMessage(lpttt->hdr.hwndFrom, TTM_SETMAXTIPWIDTH, 0, 200);
+						}
+					}
+					else
+					{
+						SendMessage(lpttt->hdr.hwndFrom, TTM_SETMAXTIPWIDTH, 0, -1);
+					}
+
+					if (tipTmp.length() >= tipMaxLen)
+						return FALSE;
+
+					wcscpy_s(docTip, tipTmp.c_str());
+					lpttt->lpszText = docTip;
+					return TRUE;
+				}
 			}
 			catch (...)
 			{
 				//printStr(L"ToolTip crash is caught!"));
-			}
-			break;
-		}
-
-
-		case SCN_ZOOM:
-		{
-			if (!notifyView)
-				return FALSE;
-
-			ScintillaEditView * unfocusView = isFromPrimary ? &_subEditView : &_mainEditView;
-			_smartHighlighter.highlightView(notifyView, unfocusView);
-			break;
-		}
-
-		case SCN_MACRORECORD:
-		{
-			_macro.push_back(
-				recordedMacroStep(
-					notification->message,
-					notification->wParam,
-					notification->lParam
-				)
-			);
-			break;
-		}
-
-		case SCN_PAINTED:
-		{
-			if (!notifyView)
-				return FALSE;
-
-			// Check if a restore position is needed. 
-			// Restoring a position must done after SCN_PAINTED notification so that it works in every circumstances (including wrapped large file)
-			_mainEditView.restoreCurrentPosPostStep();
-			_subEditView.restoreCurrentPosPostStep();
-
-			// ViewMoveAtWrappingDisableFix: Disable wrapping messes up visible lines.
-			// Therefore save view position before in IDM_VIEW_WRAP and restore after SCN_PAINTED, as doc. says
-			if (_mainEditView.isWrapRestoreNeeded())
-			{
-				_mainEditView.restoreCurrentPosPreStep();
-				_mainEditView.setWrapRestoreNeeded(false);
-			}
-
-			if (_subEditView.isWrapRestoreNeeded())
-			{
-				_subEditView.restoreCurrentPosPreStep();
-				_subEditView.setWrapRestoreNeeded(false);
-			}
-
-			notifyView->updateLineNumberWidth();
-
-			if (_syncInfo.doSync())
-				doSynScorll(HWND(notification->nmhdr.hwndFrom));
-
-			const NppParameters& nppParam = NppParameters::getInstance();
-
-			// if it's searching/replacing, then do nothing
-			if ((_linkTriggered && !nppParam._isFindReplacing) || notification->wParam == LINKTRIGGERED)
-			{
-				addHotSpot();
-				_linkTriggered = false;
-			}
-
-			if (_pDocMap && (!_pDocMap->isClosed()) && _pDocMap->isVisible() && !_pDocMap->isTemporarilyShowing())
-			{
-				_pDocMap->wrapMap();
-				_pDocMap->scrollMap();
-			}
-			break;
-		}
-
-		case SCN_NEEDSHOWN:
-		{
-			break;
-		}
-
-		case SCN_CALLTIPCLICK:
-		{
-			AutoCompletion * autoC = isFromPrimary ? &_autoCompleteMain : &_autoCompleteSub;
-			autoC->callTipClick(notification->position);
-			break;
-		}
-
-		case SCN_AUTOCSELECTION:
-		{
-			if (!notifyView)
-				return FALSE;
-
-			const NppGUI& nppGui = NppParameters::getInstance().getNppGUI();
-
-			// if autocompletion is disabled and it is triggered manually, then both ENTER & TAB will insert the selection 
-			if (nppGui._autocStatus == NppGUI::AutocStatus::autoc_none)
-			{
-				break;
-			}
-
-			if (notification->listCompletionMethod == SC_AC_NEWLINE && !nppGui._autocInsertSelectedUseENTER)
-			{
-				notifyView->execute(SCI_AUTOCCANCEL);
-				notifyView->execute(SCI_NEWLINE);
-			}
-
-			if (notification->listCompletionMethod == SC_AC_TAB && !nppGui._autocInsertSelectedUseTAB)
-			{
-				notifyView->execute(SCI_AUTOCCANCEL);
-				notifyView->execute(SCI_TAB);
 			}
 			break;
 		}
@@ -1153,7 +1277,7 @@ BOOL Notepad_plus::notify(SCNotification *notification)
 				pt.x = lpnm->rc.left;
 				pt.y = lpnm->rc.bottom;
 				ClientToScreen(notifRebar->getHSelf(), &pt);
-				_toolBar.doPopop(pt);
+				_toolBar.doPopup(pt);
 				return TRUE;
 			}
 

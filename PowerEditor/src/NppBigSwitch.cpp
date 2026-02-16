@@ -1,4 +1,4 @@
-﻿// This file is part of Notepad++ project
+// This file is part of Notepad++ project
 // Copyright (C)2021 Don HO <don.h@free.fr>
 
 // This program is free software: you can redistribute it and/or modify
@@ -20,9 +20,9 @@
 #include <uxtheme.h> // for EnableThemeDialogTexture
 #include <format>
 #include <windowsx.h> // for GET_X_LPARAM, GET_Y_LPARAM
+#include <atomic>
 #include "Notepad_plus_Window.h"
 #include "TaskListDlg.h"
-#include "ImageListSet.h"
 #include "ShortcutMapper.h"
 #include "ansiCharPanel.h"
 #include "clipboardHistoryPanel.h"
@@ -32,12 +32,16 @@
 #include "functionListPanel.h"
 #include "fileBrowser.h"
 #include "NppDarkMode.h"
+#include "NppConstants.h"
 
 using namespace std;
 
 #ifndef WM_DPICHANGED
 #define WM_DPICHANGED 0x02E0
 #endif
+
+std::atomic<bool> g_bNppExitFlag{ false };
+const UINT WM_TASKBARCREATED = ::RegisterWindowMessage(L"TaskbarCreated");
 
 
 struct SortTaskListPred final
@@ -78,7 +82,7 @@ bool SetOSAppRestart()
 		pathAppend(nppIssueLog, issueFn);
 	}
 
-	WCHAR wszCmdLine[RESTART_MAX_CMD_LINE] = { 0 };
+	wchar_t wszCmdLine[RESTART_MAX_CMD_LINE] = { 0 };
 	DWORD cchCmdLine = _countof(wszCmdLine);
 	DWORD dwPreviousFlags = 0;
 	HRESULT hr = ::GetApplicationRestartSettings(::GetCurrentProcess(), wszCmdLine, &cchCmdLine, &dwPreviousFlags);
@@ -177,8 +181,8 @@ LRESULT CALLBACK Notepad_plus_Window::Notepad_plus_Proc(HWND hwnd, UINT message,
 	{
 		case WM_NCCREATE:
 		{
-			// First message we get the ptr of instantiated object
-			// then stock it into GWLP_USERDATA index in order to retrieve afterward
+			// First message we get the pointer of instantiated object
+			// then store it into GWLP_USERDATA index in order to retrieve afterward
 			Notepad_plus_Window *pM30ide = static_cast<Notepad_plus_Window *>((reinterpret_cast<LPCREATESTRUCT>(lParam))->lpCreateParams);
 			pM30ide->_hSelf = hwnd;
 			::SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(pM30ide));
@@ -208,21 +212,16 @@ LRESULT Notepad_plus_Window::runProc(HWND hwnd, UINT message, WPARAM wParam, LPA
 			try
 			{
 				NppDarkMode::setDarkTitleBar(hwnd);
+				NppDarkMode::autoSubclassWindowMenuBar(hwnd);
+				NppDarkMode::autoSubclassCtlColor(hwnd);
 
 				_notepad_plus_plus_core._pPublicInterface = this;
 				LRESULT lRet = _notepad_plus_plus_core.init(hwnd);
 
 				if (NppDarkMode::isEnabled() && NppDarkMode::isExperimentalSupported())
 				{
-					RECT rcClient;
-					GetWindowRect(hwnd, &rcClient);
-
 					// Inform application of the frame change.
-					SetWindowPos(hwnd,
-						NULL,
-						rcClient.left, rcClient.top,
-						rcClient.right - rcClient.left, rcClient.bottom - rcClient.top,
-						SWP_FRAMECHANGED);
+					::SetWindowPos(hwnd, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
 				}
 
 				SetOSAppRestart();
@@ -259,50 +258,14 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 	LRESULT result = FALSE;
 	NppParameters& nppParam = NppParameters::getInstance();
 
-	if (NppDarkMode::isDarkMenuEnabled() && NppDarkMode::isEnabled() && NppDarkMode::runUAHWndProc(hwnd, message, wParam, lParam, &result))
-	{
-		return result;
-	}
-
 	switch (message)
 	{
 		case WM_NCACTIVATE:
 		{
 			// Note: lParam is -1 to prevent endless loops of calls
 			::SendMessage(_dockingManager.getHSelf(), WM_NCACTIVATE, wParam, -1);
-			result = ::DefWindowProc(hwnd, message, wParam, lParam);
-			if (NppDarkMode::isDarkMenuEnabled() && NppDarkMode::isEnabled())
-			{
-				NppDarkMode::drawUAHMenuNCBottomLine(hwnd);
-			}
-
 			NppDarkMode::calculateTreeViewStyle();
-			return result;
-		}
-
-		case WM_NCPAINT:
-		{
-			result = ::DefWindowProc(hwnd, message, wParam, lParam);
-			if (NppDarkMode::isDarkMenuEnabled() && NppDarkMode::isEnabled())
-			{
-				NppDarkMode::drawUAHMenuNCBottomLine(hwnd);
-			}
-			return result;
-		}
-
-		case WM_ERASEBKGND:
-		{
-			if (NppDarkMode::isEnabled())
-			{
-				RECT rc = {};
-				GetClientRect(hwnd, &rc);
-				::FillRect(reinterpret_cast<HDC>(wParam), &rc, NppDarkMode::getDarkerBackgroundBrush());
-				return 0;
-			}
-			else
-			{
-				return ::DefWindowProc(hwnd, message, wParam, lParam);
-			}
+			return ::DefWindowProc(hwnd, message, wParam, lParam);
 		}
 
 		case WM_SETTINGCHANGE:
@@ -319,9 +282,10 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 				nppGUI._darkmode._isEnabled = enableDarkMode;
 				if (!_preference.isCreated())
 				{
-					const int iconState = NppDarkMode::getToolBarIconSet(NppDarkMode::isEnabled());
-					toolBarStatusType state = (iconState == -1) ? _toolBar.getState() : static_cast<toolBarStatusType>(iconState);
-					switch (state)
+					auto& nppGUITbInfo = nppGUI._tbIconInfo;
+					nppGUITbInfo = NppDarkMode::getToolbarIconInfo();
+
+					switch (nppGUITbInfo._tbIconSet)
 					{
 						case TB_SMALL:
 							_toolBar.reduce();
@@ -355,6 +319,11 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 				}
 			}
 
+			// let the Scintilla to update according to the possible changed OS settings
+			// (mouse wheel vertical & horizontal scroll amount, DirectWrite rendering params, base elements, style etc.)
+			::SendMessage(_mainEditView.getHSelf(), WM_SETTINGCHANGE, wParam, lParam);
+			::SendMessage(_subEditView.getHSelf(), WM_SETTINGCHANGE, wParam, lParam);
+
 			return ::DefWindowProc(hwnd, message, wParam, lParam);
 		}
 
@@ -366,6 +335,18 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			scnN.nmhdr.code = NPPN_DARKMODECHANGED;
 			scnN.nmhdr.hwndFrom = hwnd;
 			scnN.nmhdr.idFrom = 0;
+			_pluginsManager.notify(&scnN);
+			return TRUE;
+		}
+
+		case NPPM_INTERNAL_TOOLBARICONSCHANGED:
+		{
+			refreshInternalPanelIcons();
+			// Notify plugins that toolbar icons have changed
+			SCNotification scnN{};
+			scnN.nmhdr.code = NPPN_TOOLBARICONSETCHANGED;
+			scnN.nmhdr.hwndFrom = hwnd;
+			scnN.nmhdr.idFrom = _toolBar.getState();
 			_pluginsManager.notify(&scnN);
 			return TRUE;
 		}
@@ -486,18 +467,11 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 		case NPPM_LAUNCHFINDINFILESDLG:
 		{
 			// Find in files function code should be here due to the number of parameters (2) cannot be passed via WM_COMMAND
-			constexpr int strSize = FINDREPLACE_MAXLENGTH;
 
 			bool isFirstTime = !_findReplaceDlg.isCreated();
 			_findReplaceDlg.doDialog(FIND_DLG, _nativeLangSpeaker.isRTL());
-			
-			const NppGUI & nppGui = nppParam.getNppGUI();
-			if (nppGui._fillFindFieldWithSelected)
-			{
-				wchar_t str[strSize]{};
-				_pEditView->getGenericSelectedText(str, strSize, nppGui._fillFindFieldSelectCaret);
-				_findReplaceDlg.setSearchText(str);
-			}
+
+			_findReplaceDlg.setSearchTextWithSettings();
 
 			if (isFirstTime)
 				_nativeLangSpeaker.changeFindReplaceDlgLang(_findReplaceDlg);
@@ -509,16 +483,14 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 
 		case NPPM_INTERNAL_FINDINPROJECTS:
 		{
-			constexpr int strSize = FINDREPLACE_MAXLENGTH;
-			wchar_t str[strSize]{};
-
 			bool isFirstTime = not _findReplaceDlg.isCreated();
 			_findReplaceDlg.doDialog(FIND_DLG, _nativeLangSpeaker.isRTL());
 
-			_pEditView->getGenericSelectedText(str, strSize);
-			_findReplaceDlg.setSearchText(str);
+			_findReplaceDlg.setSearchTextWithSettings();
+
 			if (isFirstTime)
 				_nativeLangSpeaker.changeDlgLang(_findReplaceDlg.getHSelf(), "Find");
+
 			_findReplaceDlg.launchFindInProjectsDlg();
 			_findReplaceDlg.setProjectCheckmarks(NULL, (int) wParam);
 			return TRUE;
@@ -526,16 +498,13 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 
 		case NPPM_INTERNAL_FINDINFINDERDLG:
 		{
-			constexpr int strSize = FINDREPLACE_MAXLENGTH;
-			wchar_t str[strSize]{};
 			Finder *launcher = reinterpret_cast<Finder *>(wParam);
 
 			bool isFirstTime = !_findInFinderDlg.isCreated();
 
 			_findInFinderDlg.doDialog(launcher, _nativeLangSpeaker.isRTL());
 
-			_pEditView->getGenericSelectedText(str, strSize);
-			_findReplaceDlg.setSearchText(str);
+			_findReplaceDlg.setSearchTextWithSettings();
 			setFindReplaceFolderFilter(NULL, NULL);
 
 			if (isFirstTime)
@@ -748,7 +717,7 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 		case NPPM_DISABLEAUTOUPDATE:
 		{
 			NppGUI & nppGUI = nppParam.getNppGUI();
-			nppGUI._autoUpdateOpt._doAutoUpdate = false;
+			nppGUI._autoUpdateOpt._doAutoUpdate = NppGUI::autoupdate_disabled;
 			return TRUE;
 		}
 
@@ -893,7 +862,7 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 
 		case NPPM_INTERNAL_SAVEBACKUP:
 		{
-			if (NppParameters::getInstance().getNppGUI().isSnapshotMode())
+			if (nppParam.getNppGUI().isSnapshotMode())
 			{
 				MainFileManager.backupCurrentBuffer();
 			}
@@ -932,7 +901,7 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			return TRUE;
 		}
 
-		case NPPM_INTERNAL_PLUGINSHORTCUTMOTIFIED:
+		case NPPM_INTERNAL_PLUGINSHORTCUTMODIFIED:
 		{
 			SCNotification scnN{};
 			scnN.nmhdr.code = NPPN_SHORTCUTREMAPPED;
@@ -979,7 +948,7 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			else if (message == NPPM_GETEXTPART)
 				fileStr = PathFindExtension(str);
 
-			// For the compability reason, if wParam is 0, then we assume the size of wstring buffer (lParam) is large enough.
+			// For the compatibility reasons, if wParam is 0, then we assume the size of wstring buffer (lParam) is large enough.
 			// otherwise we check if the wstring buffer size is enough for the wstring to copy.
 			if (wParam != 0)
 			{
@@ -996,41 +965,56 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 		case NPPM_GETCURRENTWORD:
 		case NPPM_GETCURRENTLINESTR:
 		{
-			const int strSize = CURRENTWORD_MAXLENGTH;
-			wchar_t str[strSize] = { '\0' };
+			const int strSize = CURRENTWORD_MAXLENGTH; // "If you are using the ShellExecute/Ex function, then you become subject to the INTERNET_MAX_URL_LENGTH (around 2048)
+			                                           // command line length limit imposed by the ShellExecute/Ex functions."
+			                                           // https://devblogs.microsoft.com/oldnewthing/20031210-00/?p=41553
+
+			auto str = std::make_unique<wchar_t[]>(strSize);
+			std::fill_n(str.get(), strSize, L'\0');
+
 			wchar_t *pTchar = reinterpret_cast<wchar_t *>(lParam);
 
 			if (message == NPPM_GETCURRENTWORD)
-				_pEditView->getGenericSelectedText(str, strSize);
-			else if (message == NPPM_GETCURRENTLINESTR)
-				_pEditView->getLine(_pEditView->getCurrentLineNumber(), str, strSize);
-
-			// For the compability reason, if wParam is 0, then we assume the size of wstring buffer (lParam) is large enough.
-			// otherwise we check if the wstring buffer size is enough for the wstring to copy.
-			if (wParam != 0)
 			{
-				if (lstrlen(str) >= int(wParam))	//buffer too small
+				auto txtW = _pEditView->getSelectedTextToWChar();
+				wcscpy_s(str.get(), strSize, txtW.c_str());
+			}
+			else if (message == NPPM_GETCURRENTLINESTR)
+			{
+				_pEditView->getLine(_pEditView->getCurrentLineNumber(), str.get(), strSize);
+			}
+
+			// For the compatibility reason, if wParam is 0, then we assume the size of wstring buffer (lParam) is large enough.
+			// otherwise we check if the wstring buffer size is enough for the wstring to copy.
+			BOOL result = FALSE;
+			if (wParam == 0)
+			{
+				lstrcpy(pTchar, str.get()); // compatibility mode - don't check the size
+				result = TRUE;
+			}
+			else
+			{
+				if (lstrlen(str.get()) < int(wParam))	// buffer large enough, perform safe copy
 				{
-					return FALSE;
-				}
-				else //buffer large enough, perform safe copy
-				{
-					lstrcpyn(pTchar, str, static_cast<int32_t>(wParam));
-					return TRUE;
+					lstrcpyn(pTchar, str.get(), static_cast<int32_t>(wParam));
+					result = TRUE;
 				}
 			}
 
-			lstrcpy(pTchar, str);
-			return TRUE;
+			return result;
 		}
 
 		case NPPM_GETFILENAMEATCURSOR: // wParam = buffer length, lParam = (wchar_t*)buffer
 		{
 			constexpr int strSize = CURRENTWORD_MAXLENGTH;
-			wchar_t str[strSize]{};
+			auto str = std::make_unique<wchar_t[]>(strSize);
+			std::fill_n(str.get(), strSize, L'\0');
+
 			int hasSlash = 0;
 
-			_pEditView->getGenericSelectedText(str, strSize); // this is either the selected text, or the word under the cursor if there is no selection
+			auto txtW = _pEditView->getSelectedTextToWChar(); // this is either the selected text, or the word under the cursor if there is no selection
+			wcscpy_s(str.get(), strSize, txtW.c_str());
+
 			hasSlash = FALSE;
 			for (int i = 0; str[i] != 0; i++)
 				if (CharacterIs(str[i], L"\\/"))
@@ -1042,13 +1026,15 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 				intptr_t start = 0;
 				intptr_t end = 0;
 				const wchar_t *delimiters;
-				wchar_t strLine[strSize]{};
+				auto strLine = std::make_unique<wchar_t[]>(strSize);
+				std::fill_n(strLine.get(), strSize, L'\0');
+
 				size_t lineNumber = 0;
 				intptr_t col = 0;
 
 				lineNumber = _pEditView->getCurrentLineNumber();
 				col = _pEditView->execute(SCI_GETCURRENTPOS) - _pEditView->execute(SCI_POSITIONFROMLINE, lineNumber);
-				_pEditView->getLine(lineNumber, strLine, strSize);
+				_pEditView->getLine(lineNumber, strLine.get(), strSize);
 
 				// find the start
 				start = col;
@@ -1063,17 +1049,17 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 				delimiters = L" \t:()[]<>\"\r\n";
 				while ((strLine[end] != 0) && (CharacterIs(strLine[end], delimiters) == FALSE)) end++;
 
-				lstrcpyn(str, &strLine[start], static_cast<int>(end - start + 1));
+				lstrcpyn(str.get(), &strLine[start], static_cast<int>(end - start + 1));
 			}
 
-			if (lstrlen(str) >= int(wParam))	//buffer too small
+			if (lstrlen(str.get()) >= int(wParam))	//buffer too small
 			{
 				return FALSE;
 			}
 			else //buffer large enough, perform safe copy
 			{
 				wchar_t* pTchar = reinterpret_cast<wchar_t*>(lParam);
-				lstrcpyn(pTchar, str, static_cast<int32_t>(wParam));
+				lstrcpyn(pTchar, str.get(), static_cast<int32_t>(wParam));
 				return TRUE;
 			}
 		}
@@ -1089,7 +1075,7 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			if (message == NPPM_GETNPPDIRECTORY)
 				PathRemoveFileSpec(str);
 
-			// For the compability reason, if wParam is 0, then we assume the size of wstring buffer (lParam) is large enough.
+			// For the compatibility reason, if wParam is 0, then we assume the size of wstring buffer (lParam) is large enough.
 			// otherwise we check if the wstring buffer size is enough for the wstring to copy.
 			if (wParam != 0)
 			{
@@ -1151,9 +1137,9 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 				return 0;
 		}
 
-		case NPPM_GETOPENFILENAMESPRIMARY:
-		case NPPM_GETOPENFILENAMESSECOND:
-		case NPPM_GETOPENFILENAMES:
+		case NPPM_GETOPENFILENAMESPRIMARY_DEPRECATED:
+		case NPPM_GETOPENFILENAMESSECOND_DEPRECATED:
+		case NPPM_GETOPENFILENAMES_DEPRECATED:
 		{
 			if (!wParam)
 				return 0;
@@ -1162,7 +1148,7 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			size_t nbFileNames = static_cast<size_t>(lParam);
 
 			size_t j = 0;
-			if (message != NPPM_GETOPENFILENAMESSECOND)
+			if (message != NPPM_GETOPENFILENAMESSECOND_DEPRECATED)
 			{
 				for (size_t i = 0; i < _mainDocTab.nbItem() && j < nbFileNames; ++i)
 				{
@@ -1172,7 +1158,7 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 				}
 			}
 
-			if (message != NPPM_GETOPENFILENAMESPRIMARY)
+			if (message != NPPM_GETOPENFILENAMESPRIMARY_DEPRECATED)
 			{
 				for (size_t i = 0; i < _subDocTab.nbItem() && j < nbFileNames; ++i)
 				{
@@ -1206,7 +1192,7 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 				return TRUE;
 			}
 
-			if (NppParameters::getInstance().getNppGUI()._styleMRU)
+			if (nppParam.getNppGUI()._styleMRU)
 			{
 				tli->_currentIndex = 0;
 				std::sort(tli->_tlfsLst.begin(),tli->_tlfsLst.end(),SortTaskListPred(_mainDocTab,_subDocTab));
@@ -1374,7 +1360,7 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			// clean buffer
 			delete [] buffer;
 
-			// set new encoding if BOM was changed by other programms
+			// set new encoding if BOM was changed by other programs
 			UniMode um = UnicodeConvertor.getEncoding();
 			(pSci->getCurrentBuffer())->setUnicodeMode(um);
 			(pSci->getCurrentBuffer())->setDirty(true);
@@ -1567,10 +1553,15 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 					m = ms[indexMacro].getMacro();
 				}
 
-				_pEditView->execute(SCI_BEGINUNDOACTION);
+				// to be able to roll back all the possible macro-steps changes at once, no matter how many times
+				// the current macro will be played, we need to establish HERE the list of the macro playback affected docs
+				// intended for the ending undo actions later and also close HERE all the opened undo actions of the docs
+				// (we do not use here an explicit begin undo action call, the macroPlayback() func handles all the needed undo action openings)
+				std::vector<Document> docs4EndUA;
+
 				for (;;)
 				{
-					macroPlayback(m);
+					macroPlayback(m, &docs4EndUA);
 					++counter;
 					if ( times >= 0 )
 					{
@@ -1610,7 +1601,26 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 						}
 					}
 				}
-				_pEditView->execute(SCI_ENDUNDOACTION);
+
+				// handle all the affected docs undo actions closing
+				Document invisSciDoc = _invisibleEditView.execute(SCI_GETDOCPOINTER); // store the view's original doc
+				while (!docs4EndUA.empty())
+				{
+					Document doc = docs4EndUA.back();
+					if (MainFileManager.getBufferFromDocument(doc) == BUFFER_INVALID)
+					{
+						// affected doc no longer exists (a macro step closed its associated Notepad++ tab/buffer),
+						// the ending undo action is not needed (until Notepad++ supports tab/buffer closing undo)
+					}
+					else
+					{
+						// complete the open undo action for existing doc object
+						_invisibleEditView.execute(SCI_SETDOCPOINTER, 0, doc);
+						_invisibleEditView.execute(SCI_ENDUNDOACTION);
+					}
+					docs4EndUA.pop_back();
+				}
+				_invisibleEditView.execute(SCI_SETDOCPOINTER, 0, invisSciDoc); // restore
 			}
 			break;
 		}
@@ -1640,7 +1650,7 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			// The deallocated scintilla view in _referees is used in Buffer::nextUntitledNewNumber().
 
 			// So we do nothing here and let Notepad++ destroy allocated Scintilla while it exits
-			// and we keep this message for the sake of compability withe the existing plugins.
+			// and we keep this message for the sake of compatibility with the existing plugins.
 			return true;
 		}
 
@@ -1838,6 +1848,46 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			return TRUE;
 		}
 
+		case NPPM_INTERNAL_CHANGESELECTTEXTFORGROUND:
+		{
+			StyleArray& stylers = nppParam.getMiscStylerArray();
+
+			COLORREF selectColorFore = black;
+			const Style* pStyle = stylers.findByName(L"Selected text colour");
+			if (pStyle)
+			{
+				selectColorFore = pStyle->_fgColor;
+			}
+
+			if ((nppParam.getSVP())._selectedTextForegroundSingleColor)
+			{
+				_mainEditView.setElementColour(SC_ELEMENT_SELECTION_TEXT, selectColorFore);
+				_mainEditView.setElementColour(SC_ELEMENT_SELECTION_INACTIVE_TEXT, selectColorFore);
+				_mainEditView.setElementColour(SC_ELEMENT_SELECTION_ADDITIONAL_TEXT, selectColorFore);
+
+				_subEditView.setElementColour(SC_ELEMENT_SELECTION_TEXT, selectColorFore);
+				_subEditView.setElementColour(SC_ELEMENT_SELECTION_INACTIVE_TEXT, selectColorFore);
+				_subEditView.setElementColour(SC_ELEMENT_SELECTION_ADDITIONAL_TEXT, selectColorFore);
+			}
+			else
+			{
+				_mainEditView.execute(SCI_RESETELEMENTCOLOUR, SC_ELEMENT_SELECTION_TEXT);
+				_mainEditView.execute(SCI_RESETELEMENTCOLOUR, SC_ELEMENT_SELECTION_INACTIVE_TEXT);
+				_mainEditView.execute(SCI_RESETELEMENTCOLOUR, SC_ELEMENT_SELECTION_ADDITIONAL_TEXT);
+
+				_subEditView.execute(SCI_RESETELEMENTCOLOUR, SC_ELEMENT_SELECTION_TEXT);
+				_subEditView.execute(SCI_RESETELEMENTCOLOUR, SC_ELEMENT_SELECTION_INACTIVE_TEXT);
+				_subEditView.execute(SCI_RESETELEMENTCOLOUR, SC_ELEMENT_SELECTION_ADDITIONAL_TEXT);
+			}
+
+			if (_configStyleDlg.isCreated())
+			{
+				_configStyleDlg.syncWithSelFgSingleColorCtrl();
+			}
+
+			return TRUE;
+		}
+
 		case NPPM_INTERNAL_SETWORDCHARS:
 		{
 			_mainEditView.setWordChars();
@@ -1867,7 +1917,7 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			return TRUE;
 		}
 
-		case NPPM_INTERNAL_SETMULTISELCTION:
+		case NPPM_INTERNAL_SETMULTISELECTION:
 		{
 			ScintillaViewParams& svp = const_cast<ScintillaViewParams&>(nppParam.getSVP());
 			_mainEditView.execute(SCI_SETMULTIPLESELECTION, svp._multiSelection);
@@ -1885,7 +1935,7 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 
 		case NPPM_INTERNAL_ISTABBARREDUCED:
 		{
-			return TabBarPlus::isReduced() ? TRUE : FALSE;
+			return nppParam.getNppGUI()._tabStatus & TAB_REDUCE ? TRUE : FALSE;
 		}
 
 		// ADD: success->hwnd; failure->NULL
@@ -1989,7 +2039,7 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 										roundCornerValue = 5;
 									}
 
-									::FillRect(nmtbcd->nmcd.hdc, &nmtbcd->nmcd.rc, NppDarkMode::getDarkerBackgroundBrush());
+									::FillRect(nmtbcd->nmcd.hdc, &nmtbcd->nmcd.rc, NppDarkMode::getDlgBackgroundBrush());
 									lr |= CDRF_NOTIFYITEMDRAW;
 								}
 
@@ -2004,7 +2054,7 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 								nmtbcd->clrText = NppDarkMode::getTextColor();
 								nmtbcd->clrTextHighlight = NppDarkMode::getTextColor();
 								nmtbcd->clrBtnFace = NppDarkMode::getBackgroundColor();
-								nmtbcd->clrBtnHighlight = NppDarkMode::getSofterBackgroundColor();
+								nmtbcd->clrBtnHighlight = NppDarkMode::getCtrlBackgroundColor();
 								nmtbcd->clrHighlightHotTrack = NppDarkMode::getHotBackgroundColor();
 								nmtbcd->nStringBkMode = TRANSPARENT;
 								nmtbcd->nHLStringBkMode = TRANSPARENT;
@@ -2044,7 +2094,7 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 								}
 								else if ((nmtbcd->nmcd.uItemState & CDIS_CHECKED) == CDIS_CHECKED)
 								{
-									auto holdBrush = ::SelectObject(nmtbcd->nmcd.hdc, NppDarkMode::getSofterBackgroundBrush());
+									auto holdBrush = ::SelectObject(nmtbcd->nmcd.hdc, NppDarkMode::getCtrlBackgroundBrush());
 									auto holdPen = ::SelectObject(nmtbcd->nmcd.hdc, NppDarkMode::getEdgePen());
 
 									::RoundRect(nmtbcd->nmcd.hdc, rcItem.left, rcItem.top, rcItem.right, rcItem.bottom, roundCornerValue, roundCornerValue);
@@ -2145,6 +2195,76 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 						return FALSE;
 				}
 			}
+			else if (lpnmhdr->hwndFrom == _rebarTop.getHSelf()
+				|| lpnmhdr->hwndFrom == _rebarBottom.getHSelf())
+			{
+				switch (lpnmhdr->code)
+				{
+					case NM_CUSTOMDRAW:
+					{
+						auto lpnmcd = reinterpret_cast<LPNMCUSTOMDRAW>(lParam);
+
+						switch (lpnmcd->dwDrawStage)
+						{
+							case CDDS_PREPAINT:
+							{
+								if (!NppDarkMode::isEnabled())
+								{
+									return CDRF_DODEFAULT;
+								}
+
+								::FillRect(lpnmcd->hdc, &lpnmcd->rc, NppDarkMode::getDlgBackgroundBrush());
+								REBARBANDINFO rbBand{};
+								rbBand.cbSize = sizeof(REBARBANDINFO);
+								rbBand.fMask = RBBIM_STYLE | RBBIM_CHEVRONLOCATION | RBBIM_CHEVRONSTATE;
+								::SendMessage(lpnmcd->hdr.hwndFrom, RB_GETBANDINFO, 0, reinterpret_cast<LPARAM>(&rbBand));
+
+								LRESULT lr = CDRF_DODEFAULT;
+
+								if ((rbBand.fStyle & RBBS_USECHEVRON) == RBBS_USECHEVRON
+									&& (rbBand.rcChevronLocation.right - rbBand.rcChevronLocation.left) > 0)
+								{
+									static int roundCornerValue = 0;
+									if (NppDarkMode::isWindows11())
+									{
+										roundCornerValue = 5;
+									}
+
+									const bool isHot = (rbBand.uChevronState & STATE_SYSTEM_HOTTRACKED) == STATE_SYSTEM_HOTTRACKED;
+									const bool isPressed = (rbBand.uChevronState & STATE_SYSTEM_PRESSED) == STATE_SYSTEM_PRESSED;
+
+									if (isHot)
+									{
+										NppDarkMode::paintRoundRect(lpnmcd->hdc, rbBand.rcChevronLocation, NppDarkMode::getHotEdgePen(), NppDarkMode::getHotBackgroundBrush(), roundCornerValue, roundCornerValue);
+									}
+									else if (isPressed)
+									{
+										NppDarkMode::paintRoundRect(lpnmcd->hdc, rbBand.rcChevronLocation, NppDarkMode::getEdgePen(), NppDarkMode::getCtrlBackgroundBrush(), roundCornerValue, roundCornerValue);
+									}
+
+									::SetTextColor(lpnmcd->hdc, isHot ? NppDarkMode::getTextColor() : NppDarkMode::getDarkerTextColor());
+									::SetBkMode(lpnmcd->hdc, TRANSPARENT);
+
+									constexpr auto dtFlags = DT_NOPREFIX | DT_CENTER | DT_TOP | DT_SINGLELINE | DT_NOCLIP;
+									::DrawText(lpnmcd->hdc, L"»", -1, &rbBand.rcChevronLocation, dtFlags);
+
+									lr = CDRF_SKIPDEFAULT;
+								}
+
+								return lr;
+							}
+
+							default:
+								break;
+						}
+
+						return CDRF_DODEFAULT;
+					}
+
+					default:
+						break;
+				}
+}
 
 			SCNotification *notification = reinterpret_cast<SCNotification *>(lParam);
 
@@ -2173,22 +2293,10 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 
 		case NPPM_INTERNAL_CHECKDOCSTATUS:
 		{
-			// This is an workaround to deal with Microsoft issue in ReadDirectoryChanges notification
-			// If command prompt is used to write file continuously (e.g. ping -t 8.8.8.8 > ping.log)
-			// Then ReadDirectoryChanges does not detect the change.
-			// Fortunately, notification is sent if right click or double click happens on that file
-			// Let's leverage this as workaround to enhance npp file monitoring functionality.
-			// So calling "doesFileExist" is a workaround here.
-
-			Buffer* currBuf = getCurrentBuffer();
-			if (currBuf && currBuf->isMonitoringOn())
-				doesFileExist(currBuf->getFullPathName());
-
 			const NppGUI & nppgui = nppParam.getNppGUI();
 			if (nppgui._fileAutoDetection != cdDisabled)
 			{
 				bool bCheckOnlyCurrentBuffer = (nppgui._fileAutoDetection & cdEnabledNew) ? true : false;
-
 				checkModifiedDocument(bCheckOnlyCurrentBuffer);
 				return TRUE;
 			}
@@ -2253,27 +2361,11 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			return MainFileManager.getFileNameFromBuffer(reinterpret_cast<BufferID>(wParam), reinterpret_cast<wchar_t *>(lParam));
 		}
 
-		case NPPM_INTERNAL_ENABLECHECKDOCOPT:
-		{
-			NppGUI& nppgui = nppParam.getNppGUI();
-			if (wParam == CHECKDOCOPT_NONE)
-				nppgui._fileAutoDetection = cdDisabled;
-			else if (wParam == CHECKDOCOPT_UPDATESILENTLY)
-				nppgui._fileAutoDetection = (cdEnabledOld | cdAutoUpdate);
-			else if (wParam == CHECKDOCOPT_UPDATEGO2END)
-				nppgui._fileAutoDetection = (cdEnabledOld | cdGo2end);
-			else if (wParam == (CHECKDOCOPT_UPDATESILENTLY | CHECKDOCOPT_UPDATEGO2END))
-				nppgui._fileAutoDetection = (cdEnabledOld | cdGo2end | cdAutoUpdate);
-
-			return TRUE;
-		}
-
-
 		case WM_ACTIVATE:
 		{
 			if (wParam != WA_INACTIVE && _pEditView && _pNonEditView)
 			{
-				_pEditView->getFocus();
+				_pEditView->grabFocus();
 				auto x = _pEditView->execute(SCI_GETXOFFSET);
 				_pEditView->execute(SCI_SETXOFFSET, x);
 				x = _pNonEditView->execute(SCI_GETXOFFSET);
@@ -2301,11 +2393,19 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			//reset styler for change in Stylers.xml
 			_mainEditView.defineDocType(_mainEditView.getCurrentBuffer()->getLangType());
 			_mainEditView.performGlobalStyles();
-			addHotSpot(& _mainEditView);
 
 			_subEditView.defineDocType(_subEditView.getCurrentBuffer()->getLangType());
 			_subEditView.performGlobalStyles();
-			addHotSpot(& _subEditView);
+
+			int urlAction = nppParam.getNppGUI()._styleURL;
+			if (urlAction != urlDisable)
+			{
+				if (_mainEditView.getCurrentBuffer()->allowClickableLink())
+					addHotSpot(&_mainEditView);
+
+				if (_subEditView.getCurrentBuffer()->allowClickableLink())
+					addHotSpot(&_subEditView);
+			}
 
 			_findReplaceDlg.updateFinderScintilla();
 			
@@ -2316,11 +2416,11 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			drawDocumentMapColoursFromStylerArray();
 
 			// Update default fg/bg colors in Parameters for both internal/plugins docking dialog
-			const Style* pStyle = NppParameters::getInstance().getGlobalStylers().findByID(STYLE_DEFAULT);
+			const Style* pStyle = nppParam.getGlobalStylers().findByID(STYLE_DEFAULT);
 			if (pStyle)
 			{
-				NppParameters::getInstance().setCurrentDefaultFgColor(pStyle->_fgColor);
-				NppParameters::getInstance().setCurrentDefaultBgColor(pStyle->_bgColor);
+				nppParam.setCurrentDefaultFgColor(pStyle->_fgColor);
+				nppParam.setCurrentDefaultBgColor(pStyle->_bgColor);
 				drawAutocompleteColoursFromTheme(pStyle->_fgColor, pStyle->_bgColor);
 			}
 
@@ -2703,7 +2803,7 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 
 				if (nppgui._rememberLastSession)
 				{
-					//Lock the recent file list so it isnt populated with opened files
+					//Lock the recent file list so it isn't populated with opened files
 					//Causing them to show on restart even though they are loaded by session
 					_lastRecentFileList.setLock(true);	//only lock when the session is remembered
 				}
@@ -2736,6 +2836,11 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 
 					return 0; // abort quitting
 				}
+
+				// from this point on the Notepad++ exit is inevitable
+				g_bNppExitFlag.store(true); // thread-safe op
+				// currently it is used only in the Notepad_plus::backupDocument worker thread,
+				// use it in such a thread like:	if (g_bNppExitFlag.load()) -> finish work of & exit the thread
 
 				if (_beforeSpecialView._isFullScreen)	//closing, return to windowed mode
 					fullScreenToggle();
@@ -2851,10 +2956,13 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 
 		case WM_SYSCOMMAND:
 		{
-			const NppGUI & nppgui = (nppParam.getNppGUI());
-			if ((nppgui._isMinimizedToTray || _pPublicInterface->isPrelaunch()) && (wParam == SC_MINIMIZE))
+			const NppGUI & nppgui = nppParam.getNppGUI();
+			auto toTray = nppgui._isMinimizedToTray;
+			if (((toTray == sta_minimize || toTray == sta_minimize_close || _pPublicInterface->isPrelaunch()) && (wParam == SC_MINIMIZE)) ||
+				((toTray == sta_close || toTray == sta_minimize_close) && wParam == SC_CLOSE)
+			)
 			{
-				if (nullptr == _pTrayIco)
+				if (!_pTrayIco)
 				{
 					HICON icon = nullptr;
 					Notepad_plus_Window::loadTrayIcon(_pPublicInterface->getHinst(), &icon);
@@ -2868,11 +2976,11 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 				return TRUE;
 			}
 
-			if (wParam == SC_KEYMENU && lParam == VK_SPACE)
+			if ((wParam & 0xFFF0) == SC_KEYMENU && lParam == VK_SPACE) // typing Alt-Space to have the system menu of application icon in the title bar
 			{
 				_sysMenuEntering = true;
 			}
-			else if (wParam == 0xF093) //it should be SC_MOUSEMENU. A bug?
+			else if ((wParam & 0xFFF0) == SC_MOUSEMENU) // clicking the application icon in the title bar to have the system menu
 			{
 				_sysMenuEntering = true;
 			}
@@ -2880,9 +2988,20 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			return ::DefWindowProc(hwnd, message, wParam, lParam);
 		}
 
+		case WM_NCRBUTTONDOWN: // right click on the title bar to have system menu (in the form of contextual menu beside of mouse cursor)
+		{
+			if (wParam == HTCAPTION)
+			{
+				_sysMenuEntering = true;
+			}
+			return ::DefWindowProc(hwnd, message, wParam, lParam);
+		}
+
 		case WM_LBUTTONDBLCLK:
 		{
-			::SendMessage(hwnd, WM_COMMAND, IDM_FILE_NEW, 0);
+			DocTabView* curTabView = (currentView() == MAIN_VIEW) ? &_mainDocTab : &_subDocTab;
+			::SendMessage(curTabView->getHSelf(), WM_LBUTTONDBLCLK, wParam, lParam);
+
 			return TRUE;
 		}
 
@@ -2893,7 +3012,7 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 				//case WM_LBUTTONDBLCLK:
 				case WM_LBUTTONUP :
 				{
-					_pEditView->getFocus();
+					_pEditView->grabFocus();
 					::ShowWindow(hwnd, SW_SHOW);
 					_dockingManager.showFloatingContainers(true);
 					restoreMinimizeDialogs();
@@ -2980,12 +3099,12 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 				std::vector<tTbData *> tbData = dockContainer[i]->getDataOfAllTb();
 				for (size_t j = 0, len2 = tbData.size() ; j < len2 ; ++j)
 				{
-					if (wcsicmp(moduleName, tbData[j]->pszModuleName) == 0)
+					if (_wcsicmp(moduleName, tbData[j]->pszModuleName) == 0)
 					{
 						if (!windowName)
 							return (LRESULT)tbData[j]->hClient;
 
-						if (wcsicmp(windowName, tbData[j]->pszName) == 0)
+						if (_wcsicmp(windowName, tbData[j]->pszName) == 0)
 							return (LRESULT)tbData[j]->hClient;
 					}
 				}
@@ -3005,6 +3124,11 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			return TRUE;
 		}
 
+		case NPPM_GETTOOLBARICONSETCHOICE:
+		{
+			return _toolBar.getState();
+		}
+
 		case NPPM_SETMENUITEMCHECK:
 		{
 			::CheckMenuItem(_mainMenuHandle, static_cast<UINT>(wParam), MF_BYCOMMAND | (static_cast<BOOL>(lParam) ? MF_CHECKED : MF_UNCHECKED));
@@ -3014,7 +3138,7 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 
 		case NPPM_GETWINDOWSVERSION:
 		{
-			return (NppParameters::getInstance()).getWinVersion();
+			return nppParam.getWinVersion();
 		}
 
 		case NPPM_MAKECURRENTBUFFERDIRTY:
@@ -3074,6 +3198,23 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			return settingsOnCloudPath.length();
 		}
 
+		case NPPM_GETNPPSETTINGSDIRPATH:
+		{
+			// get the path (-settingsDir, Cloud directory, AppData or NppDir selection handled by _userPath, returned by .getUserPath())
+			wstring settingsDirPath = nppParam.getUserPath();
+
+			// if the LPARAM is a big enough non-null pointer, populate that memory with the path string
+			if (lParam != 0)
+			{
+				if (settingsDirPath.length() >= static_cast<size_t>(wParam))
+					return 0;
+				lstrcpy(reinterpret_cast<wchar_t*>(lParam), settingsDirPath.c_str());
+			}
+
+			// the message returns the string length
+			return settingsDirPath.length();
+		}
+
 		case NPPM_SETLINENUMBERWIDTHMODE:
 		{
 			if (lParam != LINENUMWIDTH_DYNAMIC && lParam != LINENUMWIDTH_CONSTANT)
@@ -3081,7 +3222,7 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 
 			ScintillaViewParams &svp = const_cast<ScintillaViewParams &>(nppParam.getSVP());
 			svp._lineNumberMarginDynamicWidth = lParam == LINENUMWIDTH_DYNAMIC;
-			::SendMessage(hwnd, WM_COMMAND, IDM_VIEW_LINENUMBER, 0);
+			::SendMessage(hwnd, NPPM_INTERNAL_LINENUMBER, 0, 0);
 
 			return TRUE;
 		}
@@ -3149,8 +3290,7 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 
 		case NPPM_SETUNTITLEDNAME:
 		{
-			if (!wParam || !lParam) return FALSE;
-			return fileRenameUntitled(reinterpret_cast<BufferID>(wParam), reinterpret_cast<const wchar_t*>(lParam));
+			return fileRenameUntitledPluginAPI(reinterpret_cast<BufferID>(wParam), reinterpret_cast<const wchar_t*>(lParam));
 		}
 
 		case NPPM_GETBOOKMARKID:
@@ -3161,24 +3301,25 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 		case NPPM_HIDETABBAR:
 		{
 			bool hide = (lParam != 0);
-			bool oldVal = DocTabView::getHideTabBarStatus();
+
+			NppGUI& nppGUI = nppParam.getNppGUI();
+			bool oldVal = (nppGUI._tabStatus & TAB_HIDE);
 			if (hide == oldVal) return oldVal;
 
-			DocTabView::setHideTabBarStatus(hide);
-			::SendMessage(hwnd, WM_SIZE, 0, 0);
-
-			NppGUI & nppGUI = (NppParameters::getInstance()).getNppGUI();
 			if (hide)
 				nppGUI._tabStatus |= TAB_HIDE;
 			else
 				nppGUI._tabStatus &= ~TAB_HIDE;
+
+			::SendMessage(hwnd, WM_SIZE, 0, 0);
 
 			return oldVal;
 		}
 
 		case NPPM_ISTABBARHIDDEN:
 		{
-			return _mainDocTab.getHideTabBarStatus();
+			NppGUI& nppGUI = nppParam.getNppGUI();
+			return (nppGUI._tabStatus & TAB_HIDE) != 0;
 		}
 
 		case NPPM_HIDETOOLBAR:
@@ -3307,7 +3448,7 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			_mainEditView.setNpcAndCcUniEOL();
 			_subEditView.setNpcAndCcUniEOL();
 
-			const auto& svp = NppParameters::getInstance().getSVP();
+			const auto& svp = nppParam.getSVP();
 			if (svp._npcShow)
 			{
 				_findReplaceDlg.updateFinderScintillaForNpc(true);
@@ -3410,7 +3551,7 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 		{
 			//printStr(L"you've got me"));
 			NppGUI & nppGUI = nppParam.getNppGUI();
-			nppGUI._autoUpdateOpt._doAutoUpdate = false;
+			nppGUI._autoUpdateOpt._doAutoUpdate = NppGUI::autoupdate_disabled;
 			return TRUE;
 		}
 
@@ -3436,7 +3577,7 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			if (index < 0)
 				return FALSE;
 
-			*(reinterpret_cast<ExternalLexerAutoIndentMode*>(lParam)) = nppParam.getELCFromIndex(index)._autoIndentMode;
+			*(reinterpret_cast<ExternalLexerAutoIndentMode*>(lParam)) = nppParam.getELCFromIndex(index)->_autoIndentMode;
 			return TRUE;
 		}
 
@@ -3446,7 +3587,7 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			if (index < 0)
 				return FALSE;
 
-			nppParam.getELCFromIndex(index)._autoIndentMode = static_cast<ExternalLexerAutoIndentMode>(lParam);
+			nppParam.getELCFromIndex(index)->_autoIndentMode = static_cast<ExternalLexerAutoIndentMode>(lParam);
 			return TRUE;
 		}
 
@@ -3470,9 +3611,9 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			if (currentColors != NULL)
 			{
 				currentColors->background = NppDarkMode::getBackgroundColor();
-				currentColors->softerBackground = NppDarkMode::getSofterBackgroundColor();
+				currentColors->softerBackground = NppDarkMode::getCtrlBackgroundColor();
 				currentColors->hotBackground = NppDarkMode::getHotBackgroundColor();
-				currentColors->pureBackground = NppDarkMode::getDarkerBackgroundColor();
+				currentColors->pureBackground = NppDarkMode::getDlgBackgroundColor();
 				currentColors->errorBackground = NppDarkMode::getErrorBackgroundColor();
 				currentColors->text = NppDarkMode::getTextColor();
 				currentColors->darkerText = NppDarkMode::getDarkerTextColor();
@@ -3516,8 +3657,8 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 		case NPPM_GETEDITORDEFAULTBACKGROUNDCOLOR:
 		{
 			return (message == NPPM_GETEDITORDEFAULTFOREGROUNDCOLOR
-					?(NppParameters::getInstance()).getCurrentDefaultFgColor()
-					:(NppParameters::getInstance()).getCurrentDefaultBgColor());
+					? nppParam.getCurrentDefaultFgColor()
+					: nppParam.getCurrentDefaultBgColor());
 		}
 
 		case NPPM_SHOWDOCLIST:
@@ -3583,7 +3724,7 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			ScintillaViewParams &svp = const_cast<ScintillaViewParams &>(nppParam.getSVP());
 
 			COLORREF multiEdgeColor = liteGrey;
-			const Style * pStyle = NppParameters::getInstance().getMiscStylerArray().findByName(L"Edge colour");
+			const Style * pStyle = nppParam.getMiscStylerArray().findByName(L"Edge colour");
 			if (pStyle)
 			{
 				multiEdgeColor = pStyle->_fgColor;
@@ -3593,7 +3734,7 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			size_t nbColAdded = 0;
 			for (auto i : svp._edgeMultiColumnPos)
 			{
-				// it's absurd to set columns beyon 8000, even it's a long line.
+				// it's absurd to set columns beyond 8000, even it's a long line.
 				// So let's ignore all the number greater than 2^13
 				if (i > twoPower13)
 					continue;
@@ -3654,6 +3795,26 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			break;
 		}
 
+		case NPPM_INTERNAL_SETTING_TABCOMPACTLABELLEN:
+		{
+			// reflect current tab-label length setting change in both views
+			const std::vector<DocTabView*> tabViews = { &_mainDocTab, &_subDocTab };
+			for (auto& pTabView : tabViews)
+			{
+				for (size_t i = 0; i < pTabView->nbItem(); ++i)
+				{
+					BufferID id = pTabView->getBufferByIndex(i);
+					if (id != BUFFER_INVALID)
+					{
+						Buffer* buf = MainFileManager.getBufferByID(id);
+						if (buf != nullptr)
+							buf->refreshCompactFileName();
+					}
+				}
+			}
+			break;
+		}
+
 		case WM_INITMENUPOPUP:
 		{
 			_windowsMenu.initPopupMenu(reinterpret_cast<HMENU>(wParam), _pDocTab);
@@ -3691,7 +3852,9 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 			_subDocTab.resizeIconsDpi();
 			_mainDocTab.setCloseBtnImageList();
 			_subDocTab.setCloseBtnImageList();
-			::SendMessage(_pPublicInterface->getHSelf(), WM_COMMAND, IDM_VIEW_REDUCETABBAR, 0);
+			_mainDocTab.setPinBtnImageList();
+			_subDocTab.setPinBtnImageList();
+			::SendMessage(_pPublicInterface->getHSelf(), NPPM_INTERNAL_REDUCETABBAR, 0, 0);
 
 			changeDocumentListIconSet(false);
 
@@ -3706,15 +3869,30 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 
 		case NPPM_INTERNAL_UPDATECLICKABLELINKS:
 		{
-			ScintillaEditView* pView = reinterpret_cast<ScintillaEditView*>(wParam);
-			if (pView == NULL)
+			if (wParam == 1)
 			{
-				addHotSpot(_pEditView);
-				addHotSpot(_pNonEditView);
+				removeAllHotSpot();
+				return TRUE;
 			}
-			else
+
+			ScintillaEditView* pView = reinterpret_cast<ScintillaEditView*>(wParam);
+
+			int urlAction = nppParam.getNppGUI()._styleURL;
+			if (urlAction != urlDisable)
 			{
-				addHotSpot(pView);
+				if (pView == NULL)
+				{
+					if (_pEditView->getCurrentBuffer()->allowClickableLink())
+						addHotSpot(_pEditView);
+
+					if (_pNonEditView->getCurrentBuffer()->allowClickableLink())
+						addHotSpot(_pNonEditView);
+				}
+				else
+				{
+					if (pView->getCurrentBuffer()->allowClickableLink())
+						addHotSpot(pView);
+				}
 			}
 			return TRUE;
 		}
@@ -3742,15 +3920,23 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 		{
 			const Buffer* buf = _pEditView->getCurrentBuffer();
 			wstring path = buf ? buf->getFullPathName() : L"";
-			PathRemoveFileSpec(path);
+			pathRemoveFileSpec(path);
 			setWorkingDir(path.c_str());
 			return TRUE;
 		}
 
 		case NPPM_INTERNAL_DOCMODIFIEDBYREPLACEALL:
 		{
-			if (wParam == reinterpret_cast<WPARAM>(_pEditView->getCurrentBuffer()))
-				addHotSpot(_pEditView);
+			Buffer* currentBuf = _pEditView->getCurrentBuffer();
+			if (wParam == reinterpret_cast<WPARAM>(currentBuf))
+			{
+				int urlAction = nppParam.getNppGUI()._styleURL;
+				if (urlAction != urlDisable && currentBuf->allowClickableLink())
+				{
+					addHotSpot(_pEditView);
+				}
+			}
+
 			SCNotification scnN{};
 			scnN.nmhdr.code = NPPN_GLOBALMODIFIED;
 			scnN.nmhdr.hwndFrom = reinterpret_cast<void*>(wParam);
@@ -3761,7 +3947,11 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 
 		case NPPM_GETNATIVELANGFILENAME:
 		{
-			string fileName = _nativeLangSpeaker.getFileName();
+			const char* fn = _nativeLangSpeaker.getFileName();
+
+			if (!fn) return 0;
+
+			string fileName = fn;
 			if (lParam != 0)
 			{
 				if (fileName.length() >= static_cast<size_t>(wParam))
@@ -3771,6 +3961,375 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 				strcpy(reinterpret_cast<char*>(lParam), fileName.c_str());
 			}
 			return fileName.length();
+		}
+
+		case NPPM_ADDSCNMODIFIEDFLAGS:
+		{
+			nppParam.addScintillaModEventMask(static_cast<unsigned long>(lParam));
+
+			auto newModEventMask = nppParam.getScintillaModEventMask();
+			_mainEditView.execute(SCI_SETMODEVENTMASK, newModEventMask);
+			_subEditView.execute(SCI_SETMODEVENTMASK, newModEventMask);
+			return TRUE;
+		}
+
+		case NPPM_INTERNAL_HILITECURRENTLINE:
+		{
+			const ScintillaViewParams& svp = nppParam.getSVP();
+
+			const COLORREF bgColour{ nppParam.getCurLineHilitingColour() };
+			const LPARAM frameWidth{ (svp._currentLineHiliteMode == LINEHILITE_FRAME) ? svp._currentLineFrameWidth : 0 };
+
+			if (svp._currentLineHiliteMode != LINEHILITE_NONE)
+			{
+				_mainEditView.setElementColour(SC_ELEMENT_CARET_LINE_BACK, bgColour);
+				_subEditView.setElementColour(SC_ELEMENT_CARET_LINE_BACK, bgColour);
+			}
+			else
+			{
+				_mainEditView.execute(SCI_RESETELEMENTCOLOUR, SC_ELEMENT_CARET_LINE_BACK, 0);
+				_subEditView.execute(SCI_RESETELEMENTCOLOUR, SC_ELEMENT_CARET_LINE_BACK, 0);
+			}
+
+			_mainEditView.execute(SCI_SETCARETLINEFRAME, frameWidth);
+			_subEditView.execute(SCI_SETCARETLINEFRAME, frameWidth);
+		}
+		break;
+
+		case NPPM_INTERNAL_LINENUMBER:
+		case NPPM_INTERNAL_SYMBOLMARGIN:
+		{
+			int margin;
+			if (message == NPPM_INTERNAL_LINENUMBER)
+				margin = ScintillaEditView::_SC_MARGE_LINENUMBER;
+			else //if (message == IDM_VIEW_SYMBOLMARGIN)
+				margin = ScintillaEditView::_SC_MARGE_SYMBOL;
+
+			if (_mainEditView.hasMarginShown(margin))
+			{
+				_mainEditView.showMargin(margin, false);
+				_subEditView.showMargin(margin, false);
+			}
+			else
+			{
+				_mainEditView.showMargin(margin);
+				_subEditView.showMargin(margin);
+			}
+		}
+		break;
+
+		case NPPM_INTERNAL_LWDEF:
+		case NPPM_INTERNAL_LWALIGN:
+		case NPPM_INTERNAL_LWINDENT:
+		{
+			int mode = (message == NPPM_INTERNAL_LWALIGN) ? SC_WRAPINDENT_SAME : \
+				(message == NPPM_INTERNAL_LWINDENT) ? SC_WRAPINDENT_INDENT : SC_WRAPINDENT_FIXED;
+			_mainEditView.execute(SCI_SETWRAPINDENTMODE, mode);
+			_subEditView.execute(SCI_SETWRAPINDENTMODE, mode);
+		}
+		break;
+
+		case NPPM_INTERNAL_FOLDSYMBOLSIMPLE:
+		case NPPM_INTERNAL_FOLDSYMBOLARROW:
+		case NPPM_INTERNAL_FOLDSYMBOLCIRCLE:
+		case NPPM_INTERNAL_FOLDSYMBOLBOX:
+		case NPPM_INTERNAL_FOLDSYMBOLNONE:
+		{
+			folderStyle fStyle = 
+				(message == NPPM_INTERNAL_FOLDSYMBOLSIMPLE) ? FOLDER_STYLE_SIMPLE : \
+				(message == NPPM_INTERNAL_FOLDSYMBOLARROW) ? FOLDER_STYLE_ARROW : \
+				(message == NPPM_INTERNAL_FOLDSYMBOLCIRCLE) ? FOLDER_STYLE_CIRCLE : \
+				(message == NPPM_INTERNAL_FOLDSYMBOLNONE) ? FOLDER_STYLE_NONE : FOLDER_STYLE_BOX;
+
+			_mainEditView.setMakerStyle(fStyle);
+			_subEditView.setMakerStyle(fStyle);
+		}
+		break;
+
+		case NPPM_INTERNAL_TOOLBARREDUCE:
+		{
+			toolBarStatusType state = _toolBar.getState();
+
+			if (state != TB_SMALL || static_cast<BOOL>(wParam))
+			{
+				_toolBar.reduce();
+			}
+		}
+		break;
+
+		case NPPM_INTERNAL_TOOLBARENLARGE:
+		{
+			toolBarStatusType state = _toolBar.getState();
+
+			if (state != TB_LARGE || static_cast<BOOL>(wParam))
+			{
+				_toolBar.enlarge();
+			}
+		}
+		break;
+
+		case NPPM_INTERNAL_TOOLBARREDUCESET2:
+		{
+			toolBarStatusType state = _toolBar.getState();
+
+			if (state != TB_SMALL2 || static_cast<BOOL>(wParam))
+			{
+				_toolBar.reduceToSet2();
+			}
+		}
+		break;
+
+		case NPPM_INTERNAL_TOOLBARENLARGESET2:
+		{
+			toolBarStatusType state = _toolBar.getState();
+
+			if (state != TB_LARGE2 || static_cast<BOOL>(wParam))
+			{
+				_toolBar.enlargeToSet2();
+			}
+		}
+		break;
+
+		case NPPM_INTERNAL_TOOLBARSTANDARD:
+		{
+			toolBarStatusType state = _toolBar.getState();
+
+			if (state != TB_STANDARD)
+			{
+				_toolBar.setToBmpIcons();
+			}
+		}
+		break;
+
+		case NPPM_INTERNAL_DRAWINACTIVETAB:
+		case NPPM_INTERNAL_DRAWTABTOPBAR:
+		{
+			TabBarPlus::triggerOwnerDrawTabbar(&(_mainDocTab.dpiManager()));
+			break;
+		}
+
+		case NPPM_INTERNAL_VERTICALTABBAR:
+		{
+			TabBarPlus::doVertical();
+			::SendMessage(_pPublicInterface->getHSelf(), WM_SIZE, 0, 0);
+			break;
+		}
+
+		case NPPM_INTERNAL_MULTILINETABBAR:
+		{
+			TabBarPlus::doMultiLine();
+			::SendMessage(_pPublicInterface->getHSelf(), WM_SIZE, 0, 0);
+			break;
+		}
+
+		case NPPM_INTERNAL_REDUCETABBAR:
+		{
+			TabBarPlus::triggerOwnerDrawTabbar(&(_mainDocTab.dpiManager()));
+			bool isReduced = nppParam.getNppGUI()._tabStatus & TAB_REDUCE;
+
+			//Resize the tab height
+			NppGUI& nppGUI = NppParameters::getInstance().getNppGUI();
+			bool drawTabCloseButton = nppGUI._tabStatus & TAB_CLOSEBUTTON;
+			bool drawTabPinButton = nppGUI._tabStatus & TAB_PINBUTTON;
+
+			int tabDpiDynamicalWidth = _mainDocTab.dpiManager().scale((drawTabCloseButton || drawTabPinButton) ? g_TabWidthButton : g_TabWidth);
+			int tabDpiDynamicalHeight = _mainDocTab.dpiManager().scale(isReduced ? g_TabHeight : g_TabHeightLarge);
+
+			TabCtrl_SetItemSize(_mainDocTab.getHSelf(), tabDpiDynamicalWidth, tabDpiDynamicalHeight);
+			TabCtrl_SetItemSize(_subDocTab.getHSelf(), tabDpiDynamicalWidth, tabDpiDynamicalHeight);
+
+			//change the font
+			const auto& hf = _mainDocTab.getFont(isReduced);
+			if (hf)
+			{
+				::SendMessage(_mainDocTab.getHSelf(), WM_SETFONT, reinterpret_cast<WPARAM>(hf), MAKELPARAM(TRUE, 0));
+				::SendMessage(_subDocTab.getHSelf(), WM_SETFONT, reinterpret_cast<WPARAM>(hf), MAKELPARAM(TRUE, 0));
+			}
+
+			::SendMessage(_pPublicInterface->getHSelf(), WM_SIZE, 0, 0);
+
+			_mainDocTab.refresh();
+			_subDocTab.refresh();
+			break;
+		}
+
+		case NPPM_INTERNAL_DRAWTABBARCLOSEBUTTON:
+		{
+			TabBarPlus::triggerOwnerDrawTabbar(&(_mainDocTab.dpiManager()));
+
+			NppGUI& nppGUI = NppParameters::getInstance().getNppGUI();
+			bool drawTabCloseButton = nppGUI._tabStatus & TAB_CLOSEBUTTON;
+			bool drawTabPinButton = nppGUI._tabStatus & TAB_PINBUTTON;
+
+			if (drawTabCloseButton && drawTabPinButton)
+			{
+				_mainDocTab.setTabCloseButtonOrder(0);
+				_mainDocTab.setTabPinButtonOrder(1);
+				_subDocTab.setTabCloseButtonOrder(0);
+				_subDocTab.setTabPinButtonOrder(1);
+			}
+			else if (!drawTabCloseButton && drawTabPinButton)
+			{
+				_mainDocTab.setTabCloseButtonOrder(-1);
+				_mainDocTab.setTabPinButtonOrder(0);
+				_subDocTab.setTabCloseButtonOrder(-1);
+				_subDocTab.setTabPinButtonOrder(0);
+			}
+			else if (drawTabCloseButton && !drawTabPinButton)
+			{
+				_mainDocTab.setTabCloseButtonOrder(0);
+				_mainDocTab.setTabPinButtonOrder(-1);
+				_subDocTab.setTabCloseButtonOrder(0);
+				_subDocTab.setTabPinButtonOrder(-1);
+			}
+			else //if (!drawTabCloseButton && !drawTabPinButton)
+			{
+				_mainDocTab.setTabCloseButtonOrder(-1);
+				_mainDocTab.setTabPinButtonOrder(-1);
+				_subDocTab.setTabCloseButtonOrder(-1);
+				_subDocTab.setTabPinButtonOrder(-1);
+			}
+
+			// This part is just for updating (redraw) the tabs
+			int tabDpiDynamicalHeight = _mainDocTab.dpiManager().scale(nppParam.getNppGUI()._tabStatus & TAB_REDUCE ? g_TabHeight : g_TabHeightLarge);
+			int tabDpiDynamicalWidth = _mainDocTab.dpiManager().scale(drawTabCloseButton ? g_TabWidthButton : g_TabWidth);
+			TabCtrl_SetItemSize(_mainDocTab.getHSelf(), tabDpiDynamicalWidth, tabDpiDynamicalHeight);
+			TabCtrl_SetItemSize(_subDocTab.getHSelf(), tabDpiDynamicalWidth, tabDpiDynamicalHeight);
+
+			::SendMessage(_pPublicInterface->getHSelf(), WM_SIZE, 0, 0);
+
+			_mainDocTab.refresh();
+			_subDocTab.refresh();
+			break;
+		}
+
+		case NPPM_INTERNAL_DRAWTABBARPINBUTTON:
+		{
+			TabBarPlus::triggerOwnerDrawTabbar(&(_mainDocTab.dpiManager()));
+
+			NppGUI& nppGUI = NppParameters::getInstance().getNppGUI();
+			bool drawTabCloseButton = nppGUI._tabStatus & TAB_CLOSEBUTTON;
+			bool drawTabPinButton = nppGUI._tabStatus & TAB_PINBUTTON;
+
+			if (!drawTabPinButton)
+			{
+				unPinnedForAllBuffers();
+			}
+
+			if (drawTabCloseButton && drawTabPinButton)
+			{
+				_mainDocTab.setTabCloseButtonOrder(0);
+				_mainDocTab.setTabPinButtonOrder(1);
+				_subDocTab.setTabCloseButtonOrder(0);
+				_subDocTab.setTabPinButtonOrder(1);
+			}
+			else if (!drawTabCloseButton && drawTabPinButton)
+			{
+				_mainDocTab.setTabCloseButtonOrder(-1);
+				_mainDocTab.setTabPinButtonOrder(0);
+				_subDocTab.setTabCloseButtonOrder(-1);
+				_subDocTab.setTabPinButtonOrder(0);
+			}
+			else if (drawTabCloseButton && !drawTabPinButton)
+			{
+				_mainDocTab.setTabCloseButtonOrder(0);
+				_mainDocTab.setTabPinButtonOrder(-1);
+				_subDocTab.setTabCloseButtonOrder(0);
+				_subDocTab.setTabPinButtonOrder(-1);
+			}
+			else //if (!drawTabCloseButton && !drawTabPinButton)
+			{
+				_mainDocTab.setTabCloseButtonOrder(-1);
+				_mainDocTab.setTabPinButtonOrder(-1);
+				_subDocTab.setTabCloseButtonOrder(-1);
+				_subDocTab.setTabPinButtonOrder(-1);
+			}
+
+			// This part is just for updating (redraw) the tabs
+			int tabDpiDynamicalHeight = _mainDocTab.dpiManager().scale(nppParam.getNppGUI()._tabStatus & TAB_REDUCE ? g_TabHeight : g_TabHeightLarge);
+			int tabDpiDynamicalWidth = _mainDocTab.dpiManager().scale(drawTabPinButton ? g_TabWidthButton : g_TabWidth);
+			TabCtrl_SetItemSize(_mainDocTab.getHSelf(), tabDpiDynamicalWidth, tabDpiDynamicalHeight);
+			TabCtrl_SetItemSize(_subDocTab.getHSelf(), tabDpiDynamicalWidth, tabDpiDynamicalHeight);
+
+			::SendMessage(_pPublicInterface->getHSelf(), WM_SIZE, 0, 0);
+			_mainDocTab.refresh();
+			_subDocTab.refresh();
+			return TRUE;
+		}
+
+		case NPPM_INTERNAL_REFRESHTABBAR:
+		{
+			::SendMessage(_mainDocTab.getHSelf(), NPPM_INTERNAL_REFRESHDARKMODE, 0, 0);
+			::SendMessage(_subDocTab.getHSelf(), NPPM_INTERNAL_REFRESHDARKMODE, 0, 0);
+
+			::SendMessage(_pPublicInterface->getHSelf(), WM_SIZE, 0, 0);
+			_mainDocTab.refresh();
+			_subDocTab.refresh();
+
+			return TRUE;
+		}
+
+		case NPPM_INTERNAL_HIDEMENURIGHTSHORTCUTS:
+		{
+			if (nppParam.getNppGUI()._hideMenuRightShortcuts)
+			{
+				int nbRemoved = 0;
+				const int bufferSize = 64;
+				wchar_t buffer[bufferSize];
+				int nbItem = GetMenuItemCount(_mainMenuHandle);
+				for (int i = nbItem - 1; i >= 0; --i)
+				{
+					::GetMenuStringW(_mainMenuHandle, i, buffer, bufferSize, MF_BYPOSITION);
+					if (lstrcmp(buffer, L"✕") == 0 || lstrcmp(buffer, L"▼") == 0 || lstrcmp(buffer, L"＋") == 0)
+					{
+						::RemoveMenu(_mainMenuHandle, i, MF_BYPOSITION);
+						++nbRemoved;
+					}
+					if (nbRemoved == 3)
+						break;
+				}
+				if (nbRemoved > 0)
+					::DrawMenuBar(hwnd);
+			}
+			return TRUE;
+		}
+
+		case NPPM_INTERNAL_SQLBACKSLASHESCAPE:
+		{
+			// Go through all open files, and if there are any SQL files open, make sure the sql.backslash.escapes propery
+			//	is updated for each of the SQL buffers' Scintilla wrapper.
+			//	This message will only be called on the rare circumstance when the backslash-is-escape-for-sql preference is toggled, so this loop won't be run very often.
+			const bool kbBackSlash = nppParam.getNppGUI()._backSlashIsEscapeCharacterForSql;
+			Document oldDoc = _invisibleEditView.execute(SCI_GETDOCPOINTER);
+			Buffer* oldBuf = _invisibleEditView.getCurrentBuffer();
+
+			DocTabView* pTab[2] = { &_mainDocTab, &_subDocTab };
+			ScintillaEditView* pView[2] = { &_mainEditView, &_subEditView };
+
+			Buffer* pBuf = NULL;
+			for (size_t v = 0; v < 2; ++v)
+			{
+				for (size_t i = 0, len = pTab[v]->nbItem(); i < len; ++i)
+				{
+					pBuf = MainFileManager.getBufferByID(pTab[v]->getBufferByIndex(i));
+
+					if (pBuf->getLangType() == L_SQL)
+					{
+						_invisibleEditView.execute(SCI_SETDOCPOINTER, 0, pBuf->getDocument());
+						_invisibleEditView.setCurrentBuffer(pBuf);
+
+						_invisibleEditView.execute(SCI_SETPROPERTY, reinterpret_cast<WPARAM>("sql.backslash.escapes"), reinterpret_cast<LPARAM>(kbBackSlash ? "1" : "0"));
+
+						if (pBuf == pView[v]->getCurrentBuffer())
+						{
+							pView[v]->defineDocType(L_SQL);
+						}
+					}
+				}
+			}
+			_invisibleEditView.execute(SCI_SETDOCPOINTER, 0, oldDoc);
+			_invisibleEditView.setCurrentBuffer(oldBuf);
+			return TRUE;
 		}
 
 		default:
@@ -3845,6 +4404,16 @@ LRESULT Notepad_plus::process(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
 						break;
 					}
 				}
+				return TRUE;
+			}
+
+			else if (message == WM_TASKBARCREATED)
+			{
+				if (!_pTrayIco)
+					return TRUE;
+
+				// re-add tray icon
+				_pTrayIco->reAddTrayIcon();
 				return TRUE;
 			}
 

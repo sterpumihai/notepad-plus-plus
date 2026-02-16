@@ -70,15 +70,7 @@ const wchar_t defExtArray[nbSupportedLang][nbExtMax][extNameMax] =
 
 void RegExtDlg::doDialog(bool isRTL)
 {
-	if (isRTL)
-	{
-		DLGTEMPLATE *pMyDlgTemplate = nullptr;
-		HGLOBAL hMyDlgTemplate = makeRTLResource(IDD_REGEXT_BOX, &pMyDlgTemplate);
-		::DialogBoxIndirectParam(_hInst, pMyDlgTemplate, _hParent, dlgProc, reinterpret_cast<LPARAM>(this));
-		::GlobalFree(hMyDlgTemplate);
-	}
-	else
-		::DialogBoxParam(_hInst, MAKEINTRESOURCE(IDD_REGEXT_BOX), _hParent, dlgProc, reinterpret_cast<LPARAM>(this));
+	StaticDialog::myCreateDialogBoxIndirectParam(IDD_REGEXT_BOX, isRTL);
 }
 
 intptr_t CALLBACK RegExtDlg::run_dlgProc(UINT Message, WPARAM wParam, LPARAM lParam)
@@ -109,7 +101,7 @@ intptr_t CALLBACK RegExtDlg::run_dlgProc(UINT Message, WPARAM wParam, LPARAM lPa
 
 		case WM_CTLCOLOREDIT:
 		{
-			return NppDarkMode::onCtlColorSofter(reinterpret_cast<HDC>(wParam));
+			return NppDarkMode::onCtlColorCtrl(reinterpret_cast<HDC>(wParam));
 		}
 
 		case WM_CTLCOLORLISTBOX:
@@ -119,7 +111,7 @@ intptr_t CALLBACK RegExtDlg::run_dlgProc(UINT Message, WPARAM wParam, LPARAM lPa
 
 		case WM_CTLCOLORDLG:
 		{
-			return NppDarkMode::onCtlColorDarker(reinterpret_cast<HDC>(wParam));
+			return NppDarkMode::onCtlColorDlg(reinterpret_cast<HDC>(wParam));
 		}
 
 		case WM_CTLCOLORSTATIC:
@@ -131,9 +123,9 @@ intptr_t CALLBACK RegExtDlg::run_dlgProc(UINT Message, WPARAM wParam, LPARAM lPa
 			//set the static text colors to show enable/disable instead of ::EnableWindow which causes blurry text
 			if (isStaticText)
 			{
-				return NppDarkMode::onCtlColorDarkerBGStaticText(hdcStatic, nppParam.isAdmin());
+				return NppDarkMode::onCtlColorDlgStaticText(hdcStatic, nppParam.isAdmin());
 			}
-			return NppDarkMode::onCtlColorDarker(hdcStatic);
+			return NppDarkMode::onCtlColorDlg(hdcStatic);
 		}
 
 		case WM_PRINTCLIENT:
@@ -216,7 +208,7 @@ intptr_t CALLBACK RegExtDlg::run_dlgProc(UINT Message, WPARAM wParam, LPARAM lPa
 					{
 						for (int i = 1 ; i < nbExtMax ; ++i)
 						{
-							if (!wcsicmp(ext2Sup, defExtArray[langIndex][i]))
+							if (!_wcsicmp(ext2Sup, defExtArray[langIndex][i]))
 							{
 								::SendDlgItemMessage(_hSelf, IDC_REGEXT_LANGEXT_LIST, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(ext2Sup));
 								return TRUE;
@@ -264,7 +256,7 @@ intptr_t CALLBACK RegExtDlg::run_dlgProc(UINT Message, WPARAM wParam, LPARAM lPa
 
 						::SendDlgItemMessage(_hSelf, LOWORD(wParam), LB_GETTEXT, i, reinterpret_cast<LPARAM>(itemName));
 
-						if (!wcsicmp(defExtArray[nbSupportedLang-1][0], itemName))
+						if (!_wcsicmp(defExtArray[nbSupportedLang-1][0], itemName))
 						{
 							::ShowWindow(::GetDlgItem(_hSelf, IDC_REGEXT_LANGEXT_LIST), SW_HIDE);
 							::ShowWindow(::GetDlgItem(_hSelf, IDC_CUSTOMEXT_EDIT), SW_SHOW);

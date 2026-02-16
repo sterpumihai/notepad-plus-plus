@@ -14,27 +14,43 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+
 #pragma once
 
-#include "tinyxmlA.h"
-#include "tinyxml.h"
-#include "Scintilla.h"
-#include "ScintillaRef.h"
+#include <windows.h>
+
+#include <shlwapi.h>
+
+#include <algorithm>
+#include <array>
+#include <cassert>
+#include <cstdio>
+#include <cstdint>
+#include <cwchar>
+#include <locale>
+#include <map>
+#include <memory>
+#include <stdexcept>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include <ILexer.h>
+#include <Lexilla.h>
+#include <SciLexer.h>
+#include <Scintilla.h>
+
+#include <tinyxml.h>
+
+#include "ContextMenu.h"
+#include "DockingCont.h"
+#include "Notepad_plus_msgs.h"
+#include "NppConstants.h"
+#include "NppDarkMode.h"
+#include "NppXml.h"
 #include "ToolBar.h"
-#include "UserDefineLangReference.h"
 #include "colors.h"
 #include "shortcut.h"
-#include "ContextMenu.h"
-#include "dpiManager.h"
-#include "NppDarkMode.h"
-#include <assert.h>
-#include <tchar.h>
-#include <map>
-#include <array>
-#include <shlwapi.h>
-#include "ILexer.h"
-#include "Lexilla.h"
-#include "DockingCont.h"
 
 #ifdef _WIN64
 
@@ -53,43 +69,6 @@
 
 class NativeLangSpeaker;
 
-const bool POS_VERTICAL = true;
-const bool POS_HORIZOTAL = false;
-
-const int UDD_SHOW   = 1; // 0000 0001
-const int UDD_DOCKED = 2; // 0000 0010
-
-// 0 : 0000 0000 hide & undocked
-// 1 : 0000 0001 show & undocked
-// 2 : 0000 0010 hide & docked
-// 3 : 0000 0011 show & docked
-
-const int TAB_DRAWTOPBAR = 1;      //0000 0000 0001
-const int TAB_DRAWINACTIVETAB = 2; //0000 0000 0010
-const int TAB_DRAGNDROP = 4;       //0000 0000 0100
-const int TAB_REDUCE = 8;          //0000 0000 1000
-const int TAB_CLOSEBUTTON = 16;    //0000 0001 0000
-const int TAB_DBCLK2CLOSE = 32;    //0000 0010 0000
-const int TAB_VERTICAL = 64;       //0000 0100 0000
-const int TAB_MULTILINE = 128;     //0000 1000 0000
-const int TAB_HIDE = 256;          //0001 0000 0000
-const int TAB_QUITONEMPTY = 512;   //0010 0000 0000
-const int TAB_ALTICONS = 1024;     //0100 0000 0000
-
-const bool activeText = true;
-const bool activeNumeric = false;
-
-enum class EolType: std::uint8_t
-{
-	windows,
-	macos,
-	unix,
-
-	// special values
-	unknown, // can not be the first value for legacy code
-	osdefault = windows,
-};
-
 /*!
 ** \brief Convert an int into a FormatType
 ** \param value An arbitrary int
@@ -97,85 +76,12 @@ enum class EolType: std::uint8_t
 */
 EolType convertIntToFormatType(int value, EolType defvalue = EolType::osdefault);
 
-
-
-
-enum UniMode {
-	uni8Bit       = 0,  // ANSI
-	uniUTF8       = 1,  // UTF-8 with BOM
-	uni16BE       = 2,  // UTF-16 Big Ending with BOM
-	uni16LE       = 3,  // UTF-16 Little Ending with BOM
-	uniCookie     = 4,  // UTF-8 without BOM
-	uni7Bit       = 5,  // 
-	uni16BE_NoBOM = 6,  // UTF-16 Big Ending without BOM
-	uni16LE_NoBOM = 7,  // UTF-16 Little Ending without BOM
-	uniEnd};
-
-enum ChangeDetect { cdDisabled = 0x0, cdEnabledOld = 0x01, cdEnabledNew = 0x02, cdAutoUpdate = 0x04, cdGo2end = 0x08 };
-enum BackupFeature {bak_none = 0, bak_simple = 1, bak_verbose = 2};
-enum OpenSaveDirSetting {dir_followCurrent = 0, dir_last = 1, dir_userDef = 2};
-enum MultiInstSetting {monoInst = 0, multiInstOnSession = 1, multiInst = 2};
-enum writeTechnologyEngine {defaultTechnology = 0, directWriteTechnology = 1};
-enum urlMode {urlDisable = 0, urlNoUnderLineFg, urlUnderLineFg, urlNoUnderLineBg, urlUnderLineBg,
-              urlMin = urlDisable,
-              urlMax = urlUnderLineBg};
-
-enum AutoIndentMode { autoIndent_none = 0, autoIndent_advanced = 1, autoIndent_basic = 2 };
-
-const int LANG_INDEX_INSTR = 0;
-const int LANG_INDEX_INSTR2 = 1;
-const int LANG_INDEX_TYPE = 2;
-const int LANG_INDEX_TYPE2 = 3;
-const int LANG_INDEX_TYPE3 = 4;
-const int LANG_INDEX_TYPE4 = 5;
-const int LANG_INDEX_TYPE5 = 6;
-const int LANG_INDEX_TYPE6 = 7;
-const int LANG_INDEX_TYPE7 = 8;
-const int LANG_INDEX_SUBSTYLE1 = 9;
-const int LANG_INDEX_SUBSTYLE2 = 10;
-const int LANG_INDEX_SUBSTYLE3 = 11;
-const int LANG_INDEX_SUBSTYLE4 = 12;
-const int LANG_INDEX_SUBSTYLE5 = 13;
-const int LANG_INDEX_SUBSTYLE6 = 14;
-const int LANG_INDEX_SUBSTYLE7 = 15;
-const int LANG_INDEX_SUBSTYLE8 = 16;
-
-const int COPYDATA_PARAMS = 0;
-//const int COPYDATA_FILENAMESA = 1; // obsolete, no more useful
-const int COPYDATA_FILENAMESW = 2;
-const int COPYDATA_FULL_CMDLINE = 3;
-
 #define PURE_LC_NONE	0
 #define PURE_LC_BOL	 1
 #define PURE_LC_WSP	 2
 
-#define DECSEP_DOT	  0
-#define DECSEP_COMMA	1
-#define DECSEP_BOTH	 2
-
-
-#define DROPBOX_AVAILABLE 1
-#define ONEDRIVE_AVAILABLE 2
-#define GOOGLEDRIVE_AVAILABLE 4
-
-#define NPP_STYLING_FILESIZE_LIMIT_DEFAULT (200 * 1024 * 1024) // 200MB+ file won't be styled
-
-const int FINDREPLACE_INSELECTION_THRESHOLD_DEFAULT = 1024;
-
-const wchar_t fontSizeStrs[][3] = {L"", L"5", L"6", L"7", L"8", L"9", L"10", L"11", L"12", L"14", L"16", L"18", L"20", L"22", L"24", L"26", L"28"};
-
-const wchar_t localConfFile[] = L"doLocalConf.xml";
-const wchar_t notepadStyleFile[] = L"asNotepad.xml";
-
-// issue xml/log file name
-const wchar_t nppLogNetworkDriveIssue[] = L"nppLogNetworkDriveIssue";
-const wchar_t nppLogNulContentCorruptionIssue[] = L"nppLogNulContentCorruptionIssue";
-
-void cutString(const wchar_t *str2cut, std::vector<std::wstring> & patternVect);
-void cutStringBy(const wchar_t *str2cut, std::vector<std::wstring> & patternVect, char byChar, bool allowEmptyStr);
-
-// style names
-const wchar_t g_npcStyleName[] = L"Non-printing characters custom color";
+void cutString(const wchar_t* str2cut, std::vector<std::wstring>& patternVect);
+void cutStringBy(const wchar_t* str2cut, std::vector<std::wstring>& patternVect, wchar_t byChar, bool allowEmptyStr);
 
 struct Position
 {
@@ -193,7 +99,7 @@ struct Position
 struct MapPosition
 {
 private:
-	intptr_t _maxPeekLenInKB = 512; // 512 KB
+	static constexpr intptr_t _maxPeekLenInKB = 512; // 512 KB
 public:
 	intptr_t _firstVisibleDisplayLine = -1;
 
@@ -208,22 +114,22 @@ public:
 	intptr_t _KByteInDoc = _maxPeekLenInKB;
 
 	bool _isWrap = false;
-	bool isValid() const { return (_firstVisibleDisplayLine != -1); };
-	bool canScroll() const { return (_KByteInDoc < _maxPeekLenInKB); }; // _nbCharInDoc < _maxPeekLen : Don't scroll the document for the performance issue
+	bool isValid() const { return (_firstVisibleDisplayLine != -1); }
+	bool canScroll() const { return (_KByteInDoc < _maxPeekLenInKB); } // _nbCharInDoc < _maxPeekLen : Don't scroll the document for the performance issue
+	static constexpr intptr_t getMaxPeekLenInKB() { return _maxPeekLenInKB; }
 };
 
 
 struct sessionFileInfo : public Position
 {
-	sessionFileInfo(const wchar_t* fn, const wchar_t *ln, int encoding, bool userReadOnly, const Position& pos, const wchar_t *backupFilePath, FILETIME originalFileLastModifTimestamp, const MapPosition & mapPos) :
-		Position(pos), _encoding(encoding), _isUserReadOnly(userReadOnly), _originalFileLastModifTimestamp(originalFileLastModifTimestamp), _mapPos(mapPos)
-	{
-		if (fn) _fileName = fn;
-		if (ln)	_langName = ln;
-		if (backupFilePath) _backupFilePath = backupFilePath;
-	}
+	sessionFileInfo(const wchar_t* fn, const wchar_t* ln, int encoding, bool userReadOnly, bool isPinned, bool isUntitleTabRenamed, const Position& pos, const wchar_t* backupFilePath, FILETIME originalFileLastModifTimestamp, const MapPosition& mapPos) noexcept
+		: Position(pos), _fileName(fn ? fn : L""), _langName(ln ? ln : L"")
+		, _encoding(encoding), _isUserReadOnly(userReadOnly), _isPinned(isPinned)
+		, _isUntitledTabRenamed(isUntitleTabRenamed), _backupFilePath(backupFilePath ? backupFilePath : L"")
+		, _originalFileLastModifTimestamp(originalFileLastModifTimestamp), _mapPos(mapPos)
+	{}
 
-	sessionFileInfo(const std::wstring& fn) : _fileName(fn) {}
+	explicit sessionFileInfo(const std::wstring& fn) noexcept : _fileName(fn) {}
 
 	std::wstring _fileName;
 	std::wstring _langName;
@@ -234,6 +140,8 @@ struct sessionFileInfo : public Position
 	bool _isMonitoring = false;
 	int _individualTabColour = -1;
 	bool _isRTL = false;
+	bool _isPinned = false;
+	bool _isUntitledTabRenamed = false;
 	std::wstring _backupFilePath;
 	FILETIME _originalFileLastModifTimestamp {};
 
@@ -243,8 +151,8 @@ struct sessionFileInfo : public Position
 
 struct Session
 {
-	size_t nbMainFiles() const {return _mainViewFiles.size();};
-	size_t nbSubFiles() const {return _subViewFiles.size();};
+	size_t nbMainFiles() const { return _mainViewFiles.size(); }
+	size_t nbSubFiles() const { return _subViewFiles.size(); }
 	size_t _activeView = 0;
 	size_t _activeMainIndex = 0;
 	size_t _activeSubIndex = 0;
@@ -260,11 +168,14 @@ struct CmdLineParams
 {
 	bool _isNoPlugin = false;
 	bool _isReadOnly = false;
+	bool _isFullReadOnly = false;
+	bool _isFullReadOnlySavingForbidden = false;
 	bool _isNoSession = false;
 	bool _isNoTab = false;
 	bool _isPreLaunch = false;
 	bool _showLoadingTime = false;
 	bool _alwaysOnTop = false;
+	bool _displayCmdLineArgs = false;
 	intptr_t _line2go   = -1;
 	intptr_t _column2go = -1;
 	intptr_t _pos2go = -1;
@@ -299,7 +210,8 @@ struct CmdLineParams
 	}
 };
 
-// A POD class to send CmdLineParams through WM_COPYDATA and to Notepad_plus::loadCommandlineParams
+// Command Line Parameters Data Transfer Object class:
+// A POD (Plain Old Data) class to send CmdLineParams through WM_COPYDATA and to Notepad_plus::loadCommandlineParams
 struct CmdLineParamsDTO
 {
 	bool _isReadOnly = false;
@@ -315,7 +227,7 @@ struct CmdLineParamsDTO
 
 	LangType _langType = L_EXTERNAL;
 	wchar_t _udlName[MAX_PATH] = {'\0'};
-	wchar_t _pluginMessage[MAX_PATH] = {'\0'};
+	wchar_t _pluginMessage[2048] = {'\0'};
 
 	static CmdLineParamsDTO FromCmdLineParams(const CmdLineParams& params)
 	{
@@ -333,27 +245,23 @@ struct CmdLineParamsDTO
 
 		dto._langType = params._langType;
 		wcsncpy(dto._udlName, params._udlName.c_str(), MAX_PATH);
-		wcsncpy(dto._pluginMessage, params._pluginMessage.c_str(), MAX_PATH);
+		wcsncpy(dto._pluginMessage, params._pluginMessage.c_str(), 2048);
 		return dto;
 	}
 };
 
-#define FWI_PANEL_WH_DEFAULT 100
+inline constexpr int FWI_PANEL_WH_DEFAULT = 100;
+inline constexpr int DMD_PANEL_WH_DEFAULT = 200;
+
 struct FloatingWindowInfo
 {
 	int _cont = 0;
 	RECT _pos = { 0, 0, FWI_PANEL_WH_DEFAULT, FWI_PANEL_WH_DEFAULT };
 
-	FloatingWindowInfo(int cont, int x, int y, int w, int h)
-		: _cont(cont)
-	{
-		_pos.left	= x;
-		_pos.top	= y;
-		_pos.right	= w;
-		_pos.bottom = h;
-	}
+	explicit FloatingWindowInfo(int cont, int x, int y, int w, int h) noexcept
+		: _cont(cont), _pos(x, y, w, h)
+	{}
 };
-
 
 struct PluginDlgDockingInfo final
 {
@@ -370,7 +278,7 @@ struct PluginDlgDockingInfo final
 
 	bool operator == (const PluginDlgDockingInfo& rhs) const
 	{
-		return _internalID == rhs._internalID and _name == rhs._name;
+		return _internalID == rhs._internalID && _name == rhs._name;
 	}
 };
 
@@ -380,11 +288,9 @@ struct ContainerTabInfo final
 	int _cont = 0;
 	int _activeTab = 0;
 
-	ContainerTabInfo(int cont, int activeTab) : _cont(cont), _activeTab(activeTab) {};
+	ContainerTabInfo(int cont, int activeTab) : _cont(cont), _activeTab(activeTab) {}
 };
 
-
-#define DMD_PANEL_WH_DEFAULT 200
 struct DockingManagerData final
 {
 	int _leftWidth = DMD_PANEL_WH_DEFAULT;
@@ -417,28 +323,13 @@ struct DockingManagerData final
 	}
 };
 
-
-
-const int FONTSTYLE_NONE = 0;
-const int FONTSTYLE_BOLD = 1;
-const int FONTSTYLE_ITALIC = 2;
-const int FONTSTYLE_UNDERLINE = 4;
-
-const int STYLE_NOT_USED = -1;
-
-const int COLORSTYLE_FOREGROUND = 0x01;
-const int COLORSTYLE_BACKGROUND = 0x02;
-const int COLORSTYLE_ALL = COLORSTYLE_FOREGROUND|COLORSTYLE_BACKGROUND;
-
-
-
 struct Style final
 {
 	int _styleID = STYLE_NOT_USED;
 	std::wstring _styleDesc;
 
-	COLORREF _fgColor = COLORREF(STYLE_NOT_USED);
-	COLORREF _bgColor = COLORREF(STYLE_NOT_USED);
+	COLORREF _fgColor = static_cast<COLORREF>(STYLE_NOT_USED);
+	COLORREF _bgColor = static_cast<COLORREF>(STYLE_NOT_USED);
 	int _colorStyle = COLORSTYLE_ALL;
 
 	bool _isFontEnabled = false;
@@ -467,15 +358,17 @@ struct GlobalOverride final
 
 struct StyleArray
 {
-	auto begin() { return _styleVect.begin(); };
-	auto end() { return _styleVect.end(); };
-	void clear() { _styleVect.clear(); };
+	auto begin() const { return _styleVect.begin(); }
+	auto end() const { return _styleVect.end(); }
+	auto begin() { return _styleVect.begin(); }
+	auto end() { return _styleVect.end(); }
+	void clear() { _styleVect.clear(); }
 
 	Style& getStyler(size_t index) {
 		if (index >=  _styleVect.size())
 			throw std::out_of_range("Styler index out of range");
 		return _styleVect[index];
-	};
+	}
 
 	void addStyler(int styleID, TiXmlNode *styleNode);
 
@@ -486,25 +379,21 @@ struct StyleArray
 		s._styleDesc = styleName;
 		s._fgColor = black;
 		s._bgColor = white;
-	};
+	}
 
 	Style* findByID(int id) {
-		for (size_t i = 0; i < _styleVect.size(); ++i)
-		{
-			if (_styleVect[i]._styleID == id)
-				return &(_styleVect[i]);
-		}
-		return nullptr;
-	};
+		auto it = std::find_if(_styleVect.begin(), _styleVect.end(),
+			[&id](const Style& s) { return s._styleID == id; });
+
+		return (it != _styleVect.end()) ? &(*it) : nullptr;
+	}
 
 	Style* findByName(const std::wstring& name) {
-		for (size_t i = 0; i < _styleVect.size(); ++i)
-		{
-			if (_styleVect[i]._styleDesc == name)
-				return &(_styleVect[i]);
-		}
-		return nullptr;
-	};
+		auto it = std::find_if(_styleVect.begin(), _styleVect.end(),
+			[&name](const Style& s) { return s._styleDesc == name; });
+
+		return (it != _styleVect.end()) ? &(*it) : nullptr;
+	}
 
 protected:
 	std::vector<Style> _styleVect;
@@ -515,11 +404,13 @@ protected:
 struct LexerStyler : public StyleArray
 {
 public:
-	LexerStyler & operator=(const LexerStyler & ls)
+	LexerStyler() noexcept = default;
+	LexerStyler(const LexerStyler& ls) noexcept = default;
+	LexerStyler& operator=(const LexerStyler& ls)
 	{
 		if (this != &ls)
 		{
-			*(static_cast<StyleArray *>(this)) = ls;
+			this->_styleVect = ls._styleVect;
 			this->_lexerName = ls._lexerName;
 			this->_lexerDesc = ls._lexerDesc;
 			this->_lexerUserExt = ls._lexerUserExt;
@@ -539,11 +430,11 @@ public:
 
 	void setLexerUserExt(const wchar_t *lexerUserExt) {
 		_lexerUserExt = lexerUserExt;
-	};
+	}
 
-	const wchar_t * getLexerName() const {return _lexerName.c_str();};
-	const wchar_t * getLexerDesc() const {return _lexerDesc.c_str();};
-	const wchar_t * getLexerUserExt() const {return _lexerUserExt.c_str();};
+	const wchar_t* getLexerName() const { return _lexerName.c_str(); }
+	const wchar_t* getLexerDesc() const { return _lexerDesc.c_str(); }
+	const wchar_t* getLexerUserExt() const { return _lexerUserExt.c_str(); }
 
 private :
 	std::wstring _lexerName;
@@ -552,12 +443,12 @@ private :
 };
 
 struct SortLexersInAlphabeticalOrder {
-	bool operator() (const LexerStyler& l, const LexerStyler& r) {
-		if (!lstrcmp(l.getLexerDesc(), L"Search result"))
+	bool operator() (const LexerStyler& l, const LexerStyler& r) const {
+		if (std::wcscmp(l.getLexerDesc(), L"Search result") == 0)
 			return false;
-		if (!lstrcmp(r.getLexerDesc(), L"Search result"))
+		if (std::wcscmp(r.getLexerDesc(), L"Search result") == 0)
 			return true;
-		return lstrcmp(l.getLexerDesc(), r.getLexerDesc()) < 0;
+		return std::wcscmp(l.getLexerDesc(), r.getLexerDesc()) < 0;
 	}
 };
 
@@ -570,26 +461,24 @@ struct LexerStylerArray
 	{
 		assert(index < _lexerStylerVect.size());
 		return _lexerStylerVect[index];
-	};
+	}
 
 	const wchar_t * getLexerNameFromIndex(size_t index) const { return _lexerStylerVect[index].getLexerName(); }
 	const wchar_t * getLexerDescFromIndex(size_t index) const { return _lexerStylerVect[index].getLexerDesc(); }
 
-	LexerStyler * getLexerStylerByName(const wchar_t *lexerName) {
+	LexerStyler* getLexerStylerByName(const wchar_t* lexerName) {
 		if (!lexerName) return nullptr;
-		for (size_t i = 0 ; i < _lexerStylerVect.size() ; ++i)
-		{
-			if (!lstrcmp(_lexerStylerVect[i].getLexerName(), lexerName))
-				return &(_lexerStylerVect[i]);
-		}
-		return nullptr;
-	};
+		auto it = std::find_if(_lexerStylerVect.begin(), _lexerStylerVect.end(),
+			[&lexerName](const LexerStyler& ls) { return std::wcscmp(ls.getLexerName(), lexerName) == 0; });
+
+		return (it != _lexerStylerVect.end()) ? &(*it) : nullptr;
+	}
 
 	void addLexerStyler(const wchar_t *lexerName, const wchar_t *lexerDesc, const wchar_t *lexerUserExt, TiXmlNode *lexerNode);
 
 	void sort() {
 		std::sort(_lexerStylerVect.begin(), _lexerStylerVect.end(), SortLexersInAlphabeticalOrder());
-	};
+	}
 
 private :
 	std::vector<LexerStyler> _lexerStylerVect;
@@ -599,11 +488,12 @@ private :
 struct NewDocDefaultSettings final
 {
 	EolType _format = EolType::osdefault;
-	UniMode _unicodeMode = uniCookie;
+	UniMode _unicodeMode = uniUTF8_NoBOM;
 	bool _openAnsiAsUtf8 = true;
 	LangType _lang = L_TEXT;
 	int _codepage = -1; // -1 when not using
 	bool _addNewDocumentOnStartup = false;
+	bool _useContentAsTabName = false;
 };
 
 
@@ -613,14 +503,15 @@ struct LangMenuItem final
 	int	_cmdID = -1;
 	std::wstring _langName;
 
-	LangMenuItem(LangType lt, int cmdID = 0, const std::wstring& langName = L""):
-	_langType(lt), _cmdID(cmdID), _langName(langName){};
+	explicit LangMenuItem(LangType lt, int cmdID = 0, const std::wstring& langName = L"") noexcept
+		: _langType(lt), _cmdID(cmdID), _langName(langName) {}
 
 	bool operator<(const LangMenuItem& rhs) const
 	{
-		std::wstring lhs_lang(this->_langName.length(), ' '), rhs_lang(rhs._langName.length(), ' ');
-		std::transform(this->_langName.begin(), this->_langName.end(), lhs_lang.begin(), towlower);
-		std::transform(rhs._langName.begin(), rhs._langName.end(), rhs_lang.begin(), towlower);
+		static const auto& loc = std::locale::classic();
+		std::wstring lhs_lang(this->_langName.length(), L'\0'), rhs_lang(rhs._langName.length(), L'\0');
+		std::transform(this->_langName.begin(), this->_langName.end(), lhs_lang.begin(), [](auto c) { return std::tolower(c, loc); });
+		std::transform(rhs._langName.begin(), rhs._langName.end(), rhs_lang.begin(), [](auto c) { return std::tolower(c, loc); });
 		return lhs_lang < rhs_lang;
 	}
 };
@@ -647,19 +538,19 @@ struct PrintSettings final {
 
 	PrintSettings() {
 		_marge.left = 0; _marge.top = 0; _marge.right = 0; _marge.bottom = 0;
-	};
+	}
 
 	bool isHeaderPresent() const {
 		return (!_headerLeft.empty() || !_headerMiddle.empty() || !_headerRight.empty());
-	};
+	}
 
 	bool isFooterPresent() const {
 		return (!_footerLeft.empty() || !_footerMiddle.empty() || !_footerRight.empty());
-	};
+	}
 
 	bool isUserMargePresent() const {
 		return ((_marge.left != 0) || (_marge.top != 0) || (_marge.right != 0) || (_marge.bottom != 0));
-	};
+	}
 };
 
 
@@ -682,19 +573,20 @@ public:
 			   !(month == 11 && day > 30));
 	}
 
-	explicit Date(const wchar_t *dateStr);
+	explicit Date(const char* dateStr);
 
 	// The constructor which makes the date of number of days from now
 	// nbDaysFromNow could be negative if user want to make a date in the past
 	// if the value of nbDaysFromNow is 0 then the date will be now
-	Date(int nbDaysFromNow);
+	explicit Date(int nbDaysFromNow) noexcept;
 
 	void now();
 
 	std::wstring toString() const // Return Notepad++ date format : YYYYMMDD
 	{
-		wchar_t dateStr[16];
-		wsprintf(dateStr, L"%04u%02u%02u", _year, _month, _day);
+		static constexpr size_t bufSize = 16;
+		wchar_t dateStr[bufSize]{};
+		std::swprintf(dateStr, bufSize, L"%04lu%02lu%02lu", _year, _month, _day);
 		return dateStr;
 	}
 
@@ -758,13 +650,43 @@ public:
 	bool _doDoubleQuotes = false;
 };
 
+struct TbIconInfo
+{
+	toolBarStatusType _tbIconSet = toolBarStatusType::TB_STANDARD;
+
+	// fluent icon color
+	FluentColor _tbColor = FluentColor::defaultColor;
+
+	// fluent icon custom color, used when _tbColor == FluentColor::custom
+	COLORREF _tbCustomColor = 0;
+
+	// does fluent icon use monochrome colorization
+	bool _tbUseMono = false;
+};
+
+struct AdvOptDefaults final
+{
+	std::wstring _xmlFileName;
+	TbIconInfo _tbIconInfo{};
+	int _tabIconSet = -1;
+	bool _tabUseTheme = false;
+};
+
+struct AdvancedOptions final
+{
+	AdvOptDefaults _darkDefaults{ L"DarkModeDefault.xml", { toolBarStatusType::TB_SMALL, FluentColor::defaultColor, 0, false }, 2, false };
+	AdvOptDefaults _lightDefaults{ L"", { toolBarStatusType::TB_STANDARD, FluentColor::defaultColor, 0, false }, 0, true };
+
+	bool _enableWindowsMode = false;
+};
+
 struct DarkModeConf final
 {
 	bool _isEnabled = false;
 	bool _isEnabledPlugin = true;
-	NppDarkMode::ColorTone _colorTone = NppDarkMode::blackTone;
+	NppDarkMode::ColorTone _colorTone = NppDarkMode::ColorTone::blackTone;
 	NppDarkMode::Colors _customColors = NppDarkMode::getDarkModeDefaultColors();
-	NppDarkMode::AdvancedOptions _advOptions{};
+	AdvancedOptions _advOptions{};
 };
 
 
@@ -785,20 +707,14 @@ struct LargeFileRestriction final
 
 struct NppGUI final
 {
-	toolBarStatusType _toolBarStatus = TB_STANDARD;
+	TbIconInfo _tbIconInfo{ toolBarStatusType::TB_STANDARD, FluentColor::defaultColor, 0, false };
 	bool _toolbarShow = true;
 	bool _statusBarShow = true;
 	bool _menuBarShow = true;
 
-	// 1st bit : draw top bar;
-	// 2nd bit : draw inactive tabs
-	// 3rd bit : enable drag & drop
-	// 4th bit : reduce the height
-	// 5th bit : enable vertical
-	// 6th bit : enable multiline
-
-	// 0:don't draw; 1:draw top bar 2:draw inactive tabs 3:draw both 7:draw both+drag&drop
-	int _tabStatus = (TAB_DRAWTOPBAR | TAB_DRAWINACTIVETAB | TAB_DRAGNDROP | TAB_REDUCE | TAB_CLOSEBUTTON);
+	int _tabStatus = (TAB_DRAWTOPBAR | TAB_DRAWINACTIVETAB | TAB_DRAGNDROP | TAB_REDUCE | TAB_CLOSEBUTTON | TAB_PINBUTTON);
+	bool _forceTabbarVisible = false;
+	UINT _tabCompactLabelLen = 0; // 0 ... no compacting
 
 	bool _splitterPos = POS_VERTICAL;
 	int _userDefineDlgStatus = UDD_DOCKED;
@@ -821,10 +737,12 @@ struct NppGUI final
 	bool _findWindowLessMode = false;
 
 	bool _isMaximized = false;
-	bool _isMinimizedToTray = false;
+	int _isMinimizedToTray = sta_none;
 	bool _rememberLastSession = true; // remember next session boolean will be written in the settings
 	bool _keepSessionAbsentFileEntries = false;
 	bool _isCmdlineNosessionActivated = false; // used for if -nosession is indicated on the launch time
+	bool _isFullReadOnly = false;
+	bool _isFullReadOnlySavingForbidden = false;
 	bool _detectEncoding = true;
 	bool _saveAllConfirm = true;
 	bool _setSaveDlgExtFiltToAllTypes = false;
@@ -856,6 +774,8 @@ struct NppGUI final
 	bool _confirmReplaceInAllOpenDocs = true;
 	bool _replaceStopsWithoutFindingNext = false;
 	int _inSelectionAutocheckThreshold = FINDREPLACE_INSELECTION_THRESHOLD_DEFAULT;
+	int _fillFindWhatThreshold = FILL_FINDWHAT_THRESHOLD_DEFAULT;
+	bool _fillDirFieldFromActiveDoc = false;
 	bool _muteSounds = false;
 	bool _enableFoldCmdToggable = false;
 	bool _hideMenuRightShortcuts = false;
@@ -869,8 +789,8 @@ struct NppGUI final
 	std::wstring _dateTimeFormat = L"yyyy-MM-dd HH:mm:ss";
 	bool _dateTimeReverseDefaultOrder = false;
 
-	void setTabReplacedBySpace(bool b) {_tabReplacedBySpace = b;};
-	const NewDocDefaultSettings & getNewDocDefaultSettings() const {return _newDocDefaultSettings;};
+	void setTabReplacedBySpace(bool b) { _tabReplacedBySpace = b; }
+	const NewDocDefaultSettings& getNewDocDefaultSettings() const { return _newDocDefaultSettings; }
 	std::vector<LangMenuItem> _excludedLangList;
 	bool _isLangMenuCompact = true;
 
@@ -896,12 +816,13 @@ struct NppGUI final
 	// items with no Notepad++ GUI to set
 	std::wstring _commandLineInterpreter = CMD_INTERPRETER;
 
+	enum AutoUpdateMode { autoupdate_disabled, autoupdate_on_startup, autoupdate_on_exit };
 	struct AutoUpdateOptions
 	{
-		bool _doAutoUpdate = true;
+		AutoUpdateMode _doAutoUpdate = autoupdate_on_startup;
 		int _intervalDays = 15;
 		Date _nextUpdateDate;
-		AutoUpdateOptions(): _nextUpdateDate(Date()) {};
+		AutoUpdateOptions(): _nextUpdateDate(Date()) {}
 	}
 	_autoUpdateOpt;
 
@@ -932,7 +853,7 @@ struct NppGUI final
 	bool _fileSwitcherWithoutPathColumn = true;
 	int _fileSwitcherPathWidth = 50;
 	bool _fileSwitcherDisableListViewGroups = false;
-	bool isSnapshotMode() const {return _isSnapshotMode && _rememberLastSession && !_isCmdlineNosessionActivated;};
+	bool isSnapshotMode() const { return _isSnapshotMode && _rememberLastSession && !_isCmdlineNosessionActivated; }
 	bool _isSnapshotMode = true;
 	size_t _snapshotBackupTiming = 7000;
 	std::wstring _cloudPath; // this option will never be read/written from/to config.xml
@@ -966,8 +887,8 @@ struct ScintillaViewParams
 	bool _isChangeHistoryIndicatorEnabled = false;
 	changeHistoryState _isChangeHistoryEnabled4NextSession = changeHistoryState::margin; // no -> 0 (disable), yes -> 1 (margin), yes ->2 (indicator), yes-> 3 (margin + indicator)
 
-	folderStyle  _folderStyle = FOLDER_STYLE_BOX; //"simple", "arrow", "circle", "box" and "none"
-	lineWrapMethod _lineWrapMethod = LINEWRAP_ALIGNED;
+	folderStyle _folderStyle = folderStyle::FOLDER_STYLE_BOX; //"simple", "arrow", "circle", "box" and "none"
+	lineWrapMethod _lineWrapMethod = lineWrapMethod::LINEWRAP_ALIGNED;
 	bool _foldMarginShow = true;
 	bool _indentGuideLineShow = true;
 	lineHiliteMode _currentLineHiliteMode = LINEHILITE_HILITE;
@@ -995,6 +916,7 @@ struct ScintillaViewParams
 	bool _virtualSpace = false;
 	bool _scrollBeyondLastLine = true;
 	bool _rightClickKeepsSelection = false;
+	bool _selectedTextForegroundSingleColor = false;
 	bool _disableAdvancedScrolling = false;
 	bool _doSmoothFont = false;
 	bool _showBorderEdge = true;
@@ -1002,7 +924,7 @@ struct ScintillaViewParams
 	unsigned char _paddingLeft = 0;  // 0-9 pixel
 	unsigned char _paddingRight = 0; // 0-9 pixel
 
-	// distractionFreeDivPart is used for divising the fullscreen pixel width.
+	// distractionFreeDivPart is used for dividing the fullscreen pixel width.
 	// the result of division will be the left & right padding in Distraction Free mode
 	unsigned char _distractionFreeDivPart = 4;     // 3-9 parts
 
@@ -1013,7 +935,7 @@ struct ScintillaViewParams
 		if (paddingLen <= 0)
 			paddingLen = editViewWidth / defaultDiviser;
 		return paddingLen;
-	};
+	}
 
 	bool _lineCopyCutWithoutSelection = true;
 
@@ -1021,94 +943,57 @@ struct ScintillaViewParams
 	bool _columnSel2MultiEdit = true; // _columnSel2MultiEdit must be false
 };
 
-const int NB_LIST = 20;
-const int NB_MAX_LRF_FILE = 30;
-const int NB_MAX_USER_LANG = 30;
-const int NB_MAX_EXTERNAL_LANG = 30;
-const int NB_MAX_IMPORTED_UDL = 50;
-
-constexpr int NB_DEFAULT_LRF_CUSTOMLENGTH = 100;
-constexpr int NB_MAX_LRF_CUSTOMLENGTH = MAX_PATH - 1;
-
-const int NB_MAX_FINDHISTORY_FIND	= 30;
-const int NB_MAX_FINDHISTORY_REPLACE = 30;
-const int NB_MAX_FINDHISTORY_PATH	= 30;
-const int NB_MAX_FINDHISTORY_FILTER  = 20;
-
-
-const int MASK_ReplaceBySpc = 0x80;
-const int MASK_TabSize = 0x7F;
-
-
-
-
 struct Lang final
 {
 	LangType _langID = L_TEXT;
 	std::wstring _langName;
-	const wchar_t* _defaultExtList = nullptr;
-	const wchar_t* _langKeyWordList[NB_LIST];
-	const wchar_t* _pCommentLineSymbol = nullptr;
-	const wchar_t* _pCommentStart = nullptr;
-	const wchar_t* _pCommentEnd = nullptr;
+	std::wstring _defaultExtList;
+	std::wstring _langKeyWordList[NB_LIST];
+	std::string _pCommentLineSymbol;
+	std::string _pCommentStart;
+	std::string _pCommentEnd;
 
-	bool _isTabReplacedBySpace = false;
 	int _tabSize = -1;
+	bool _isTabReplacedBySpace = false;
 	bool _isBackspaceUnindent = false;
 
-	Lang()
-	{
-		for (int i = 0 ; i < NB_LIST ; _langKeyWordList[i] = NULL, ++i);
-	}
+	Lang() noexcept = default;
 
-	Lang(LangType langID, const wchar_t *name) : _langID(langID), _langName(name ? name : L"")
+	Lang(LangType langID, const wchar_t* name, const wchar_t* extLst, const char* commentLine, const char* commentStart, const char* commentEnd, int tabInfo, bool isBackspaceUnindent) noexcept
+		: _langID(langID), _langName(name), _defaultExtList(extLst)
+		, _pCommentLineSymbol(commentLine), _pCommentStart(commentStart), _pCommentEnd(commentEnd)
+		, _isBackspaceUnindent(isBackspaceUnindent)
 	{
-		for (int i = 0 ; i < NB_LIST ; _langKeyWordList[i] = NULL, ++i);
+		setTabInfo(tabInfo);
 	}
 
 	~Lang() = default;
 
-	void setDefaultExtList(const wchar_t *extLst){
-		_defaultExtList = extLst;
-	}
-
-	void setCommentLineSymbol(const wchar_t *commentLine){
-		_pCommentLineSymbol = commentLine;
-	}
-
-	void setCommentStart(const wchar_t *commentStart){
-		_pCommentStart = commentStart;
-	}
-
-	void setCommentEnd(const wchar_t *commentEnd){
-		_pCommentEnd = commentEnd;
-	}
-
-	void setTabInfo(int tabInfo, bool isBackspaceUnindent)
+	void setTabInfo(int tabInfo)
 	{
+		static constexpr int MASK_ReplaceBySpc = 0x80;
+		static constexpr int MASK_TabSize = 0x7F;
 		if (tabInfo != -1 && tabInfo & MASK_TabSize)
 		{
 			_isTabReplacedBySpace = (tabInfo & MASK_ReplaceBySpc) != 0;
 			_tabSize = tabInfo & MASK_TabSize;
 		}
-
-		_isBackspaceUnindent = isBackspaceUnindent;
 	}
 
-	const wchar_t * getDefaultExtList() const {
-		return _defaultExtList;
+	const wchar_t* getDefaultExtList() const {
+		return _defaultExtList.c_str();
 	}
 
-	void setWords(const wchar_t *words, int index) {
+	void setWords(const wchar_t* words, int index) {
 		_langKeyWordList[index] = words;
 	}
 
-	const wchar_t * getWords(int index) const {
-		return _langKeyWordList[index];
+	const wchar_t* getWords(int index) const {
+		return _langKeyWordList[index].c_str();
 	}
 
-	LangType getLangID() const {return _langID;};
-	const wchar_t * getLangName() const {return _langName.c_str();};
+	LangType getLangID() const { return _langID; }
+	const wchar_t* getLangName() const { return _langName.c_str(); }
 
 	int getTabInfo() const
 	{
@@ -1122,39 +1007,66 @@ struct Lang final
 class UserLangContainer final
 {
 public:
-	UserLangContainer() :_name(L"new user define"), _ext(L""), _udlVersion(L"") {
-		for (int i = 0; i < SCE_USER_KWLIST_TOTAL; ++i) *_keywordLists[i] = '\0';
-	}
+	UserLangContainer() noexcept :_name(L"new user define"), _ext(L""), _udlVersion(L""), _isDarkModeTheme(false) {}
 
-	UserLangContainer(const wchar_t *name, const wchar_t *ext, bool isDarkModeTheme, const wchar_t *udlVer):
-		_name(name), _ext(ext), _isDarkModeTheme(isDarkModeTheme), _udlVersion(udlVer) {
-		for (int i = 0; i < SCE_USER_KWLIST_TOTAL; ++i) *_keywordLists[i] = '\0';
+	explicit UserLangContainer(const wchar_t* name, const wchar_t* ext, const wchar_t* udlVer, bool isDarkModeTheme) noexcept
+		: _name(name), _ext(ext), _udlVersion(udlVer), _isDarkModeTheme(isDarkModeTheme) {}
+
+	UserLangContainer(const UserLangContainer& ulc) noexcept
+		: _styles(ulc._styles),
+		_name(ulc._name),
+		_ext(ulc._ext),
+		_udlVersion(ulc._udlVersion),
+		_forcePureLC(ulc._forcePureLC),
+		_decimalSeparator(ulc._decimalSeparator),
+		_isCaseIgnored(ulc._isCaseIgnored),
+		_allowFoldOfComments(ulc._allowFoldOfComments),	
+		_foldCompact(ulc._foldCompact),
+		_isDarkModeTheme(ulc._isDarkModeTheme)
+	{
+		for (Style& st : _styles)
+		{
+			if (st._bgColor == static_cast<COLORREF>(-1))
+				st._bgColor = white;
+			if (st._fgColor == static_cast<COLORREF>(-1))
+				st._fgColor = black;
+		}
+
+		for (int i = 0; i < SCE_USER_KWLIST_TOTAL; ++i)
+		{
+			_keywordLists[i] = ulc._keywordLists[i];
+		}
+
+		for (int i = 0; i < SCE_USER_TOTAL_KEYWORD_GROUPS; ++i)
+		{
+			_isPrefix[i] = ulc._isPrefix[i];
+		}
 	}
 
 	UserLangContainer & operator = (const UserLangContainer & ulc)
 	{
 		if (this != &ulc)
 		{
+			this->_styles = ulc._styles;
 			this->_name = ulc._name;
 			this->_ext = ulc._ext;
-			this->_isDarkModeTheme = ulc._isDarkModeTheme;
 			this->_udlVersion = ulc._udlVersion;
-			this->_isCaseIgnored = ulc._isCaseIgnored;
-			this->_styles = ulc._styles;
-			this->_allowFoldOfComments = ulc._allowFoldOfComments;
 			this->_forcePureLC = ulc._forcePureLC;
 			this->_decimalSeparator = ulc._decimalSeparator;
+			this->_isCaseIgnored = ulc._isCaseIgnored;
+			this->_allowFoldOfComments = ulc._allowFoldOfComments;
 			this->_foldCompact = ulc._foldCompact;
+			this->_isDarkModeTheme = ulc._isDarkModeTheme;
 			for (Style & st : this->_styles)
 			{
-				if (st._bgColor == COLORREF(-1))
+				if (st._bgColor == static_cast<COLORREF>(-1))
 					st._bgColor = white;
-				if (st._fgColor == COLORREF(-1))
+				if (st._fgColor == static_cast<COLORREF>(-1))
 					st._fgColor = black;
 			}
 
 			for (int i = 0 ; i < SCE_USER_KWLIST_TOTAL ; ++i)
-				wcscpy_s(this->_keywordLists[i], ulc._keywordLists[i]);
+				this->_keywordLists[i] = ulc._keywordLists[i];
 
 			for (int i = 0 ; i < SCE_USER_TOTAL_KEYWORD_GROUPS ; ++i)
 				_isPrefix[i] = ulc._isPrefix[i];
@@ -1162,25 +1074,25 @@ public:
 		return *this;
 	}
 
-	const wchar_t * getName() {return _name.c_str();};
-	const wchar_t * getExtention() {return _ext.c_str();};
-	const wchar_t * getUdlVersion() {return _udlVersion.c_str();};
+	const wchar_t* getName() const { return _name.c_str(); }
+	const wchar_t* getExtention() const { return _ext.c_str(); }
+	const wchar_t* getUdlVersion() const { return _udlVersion.c_str(); }
 
 private:
 	StyleArray _styles;
 	std::wstring _name;
 	std::wstring _ext;
-	bool _isDarkModeTheme = false;
 	std::wstring _udlVersion;
 
-	wchar_t _keywordLists[SCE_USER_KWLIST_TOTAL][max_char];
-	bool _isPrefix[SCE_USER_TOTAL_KEYWORD_GROUPS] = {false};
+	std::wstring _keywordLists[SCE_USER_KWLIST_TOTAL];
+	bool _isPrefix[SCE_USER_TOTAL_KEYWORD_GROUPS] = { false };
 
-	bool _isCaseIgnored = false;
-	bool _allowFoldOfComments = false;
 	int  _forcePureLC = PURE_LC_NONE;
 	int _decimalSeparator = DECSEP_DOT;
+	bool _isCaseIgnored = false;
+	bool _allowFoldOfComments = false;
 	bool _foldCompact = false;
+	bool _isDarkModeTheme = false;
 
 	// nakama zone
 	friend class Notepad_plus;
@@ -1195,10 +1107,6 @@ private:
 	friend class UserDefineDialog;
 	friend class StylerDlg;
 };
-
-#define MAX_EXTERNAL_LEXER_NAME_LEN 128
-
-
 
 class ExternalLangContainer final
 {
@@ -1217,7 +1125,7 @@ public:
 struct FindHistory final
 {
 	enum searchMode{normal, extended, regExpr};
-	enum transparencyMode{none, onLossingFocus, persistant};
+	enum transparencyMode{none, onLosingFocus, persistent};
 
 	bool _isSearch2ButtonsMode = false;
 
@@ -1237,18 +1145,17 @@ struct FindHistory final
 	bool _isDirectionDown = true;
 	bool _dotMatchesNewline = false;
 
-	bool _isFifRecuisive = true;
+	bool _isFifRecursive = true;
 	bool _isFifInHiddenFolder = false;
     bool _isFifProjectPanel_1 = false;
     bool _isFifProjectPanel_2 = false;
     bool _isFifProjectPanel_3 = false;
 
 	searchMode _searchMode = normal;
-	transparencyMode _transparencyMode = onLossingFocus;
+	transparencyMode _transparencyMode = onLosingFocus;
 	int _transparency = 150;
 
 	bool _isFilterFollowDoc = false;
-	bool _isFolderFollowDoc = false;
 
 	bool _isBookmarkLine = false;
 	bool _isPurge = false;
@@ -1259,7 +1166,7 @@ struct FindHistory final
 
 struct ColumnEditorParam final
 {
-	enum leadingChoice : UCHAR { noneLeading, zeroLeading, spaceLeading };
+	enum class leadingChoice : UCHAR { noneLeading, zeroLeading, spaceLeading };
 
 	bool _mainChoice = activeNumeric;
 
@@ -1268,8 +1175,8 @@ struct ColumnEditorParam final
 	int _initialNum = -1;
 	int _increaseNum = -1;
 	int _repeatNum = -1;
-	int _formatChoice = 0; // 0:Dec 1:Hex 2:Oct 3:Bin
-	leadingChoice _leadingChoice = noneLeading;
+	NumBase _formatChoice = NumBase::BASE_10; // 0:Dec 1:Hex 2:Oct 3:Bin 4:HexUpperCase
+	leadingChoice _leadingChoice = leadingChoice::noneLeading;
 };
 
 class LocalizationSwitcher final
@@ -1283,7 +1190,7 @@ public:
 	};
 
 	bool addLanguageFromXml(const std::wstring& xmlFullPath);
-	std::wstring getLangFromXmlFileName(const wchar_t *fn) const;
+	static std::wstring getLangFromXmlFileName(const wchar_t* fn);
 
 	std::wstring getXmlFilePathFromLangName(const wchar_t *langName) const;
 	bool switchToLang(const wchar_t *lang2switch) const;
@@ -1306,7 +1213,7 @@ public:
 			_fileName = fn;
 	}
 
-	std::string getFileName() const
+	const std::string& getFileName() const
 	{
 		return _fileName;
 	}
@@ -1331,7 +1238,7 @@ public:
 		_themeList.push_back(std::pair<std::wstring, std::wstring>(_defaultThemeLabel, xmlFullPath));
 	}
 
-	std::wstring getThemeFromXmlFileName(const wchar_t *fn) const;
+	static std::wstring getThemeFromXmlFileName(const wchar_t* xmlFullPath);
 
 	std::wstring getXmlFilePathFromThemeName(const wchar_t *themeName) const {
 		if (!themeName || themeName[0])
@@ -1360,9 +1267,9 @@ public:
 	}
 
 	void setThemeDirPath(const std::wstring& themeDirPath) { _themeDirPath = themeDirPath; }
-	std::wstring getThemeDirPath() const { return _themeDirPath; }
+	const std::wstring& getThemeDirPath() const { return _themeDirPath; }
 
-	std::wstring getDefaultThemeLabel() const { return _defaultThemeLabel; }
+	const std::wstring& getDefaultThemeLabel() const { return _defaultThemeLabel; }
 
 	std::wstring getSavePathFrom(const std::wstring& path) const {
 		const auto iter = _themeStylerSavePath.find(path);
@@ -1374,11 +1281,11 @@ public:
 		{
 			return iter->second;
 		}
-	};
+	}
 
 	void addThemeStylerSavePath(const std::wstring& key, const std::wstring& val) {
 		_themeStylerSavePath[key] = val;
-	};
+	}
 
 private:
 	std::vector<std::pair<std::wstring, std::wstring>> _themeList;
@@ -1396,33 +1303,31 @@ struct HLSColour
 
 	HLSColour() = default;
 	HLSColour(WORD hue, WORD lightness, WORD saturation): _hue(hue), _lightness(lightness), _saturation(saturation) {}
-	HLSColour(COLORREF rgb) { ColorRGBToHLS(rgb, &_hue, &_lightness, &_saturation); }
+	explicit HLSColour(COLORREF rgb) noexcept { ::ColorRGBToHLS(rgb, &_hue, &_lightness, &_saturation); }
 
 	void loadFromRGB(COLORREF rgb) { ColorRGBToHLS(rgb, &_hue, &_lightness, &_saturation); }
 	COLORREF toRGB() const { return ColorHLSToRGB(_hue, _lightness, _saturation); }
 
-	COLORREF toRGB4DarkModWithTuning(int lightnessMore, int saturationLess) const { 
+	COLORREF toRGB4DarkModeWithTuning(int lightnessMore, int saturationLess) const { 
 		return ColorHLSToRGB(_hue, 
 			static_cast<WORD>(static_cast<int>(_lightness) + lightnessMore), 
 			static_cast<WORD>(static_cast<int>(_saturation) - saturationLess));
 	}
-	COLORREF toRGB4DarkMod() const { return toRGB4DarkModWithTuning(50, 20); }
+	COLORREF toRGB4DarkMod() const { return toRGB4DarkModeWithTuning(50, 20); }
 };
 
 struct UdlXmlFileState final {
 	TiXmlDocument* _udlXmlDoc = nullptr;
+	std::wstring _path;
 	bool _isDirty = false;
 	bool _isInDefaultSharedContainer = false; // contained in "userDefineLang.xml" file
 	std::pair<unsigned char, unsigned char> _indexRange;
 
-	UdlXmlFileState(TiXmlDocument* doc, bool isDirty, bool isInDefaultSharedContainer, std::pair<unsigned char, unsigned char> range)
-		: _udlXmlDoc(doc), _isDirty(isDirty), _isInDefaultSharedContainer(isInDefaultSharedContainer), _indexRange(range) {};
+	UdlXmlFileState(TiXmlDocument* doc, const std::wstring& path, bool isDirty, bool isInDefaultSharedContainer, std::pair<unsigned char, unsigned char> range)
+		: _udlXmlDoc(doc), _path(path), _isDirty(isDirty), _isInDefaultSharedContainer(isInDefaultSharedContainer), _indexRange(range) {}
 };
 
-const int NB_LANG = 100;
-
-const int RECENTFILES_SHOWFULLPATH = -1;
-const int RECENTFILES_SHOWONLYFILENAME = 0;
+inline constexpr int NB_LANG = 100;
 
 class DynamicMenu final
 {
@@ -1433,19 +1338,22 @@ public:
 	int getTopLevelItemNumber() const;
 	void push_back(const MenuItemUnit& m) {
 		_menuItems.push_back(m);
-	};
+	}
+	void emplace_back(unsigned long cmdID, const std::wstring& itemName, const std::wstring& parentFolderName) {
+		_menuItems.emplace_back(cmdID, itemName, parentFolderName);
+	}
 
 	MenuItemUnit& getItemFromIndex(size_t i) {
 		return _menuItems[i];
-	};
+	}
 
 	void erase(size_t i) {
 		_menuItems.erase(_menuItems.begin() + i);
 	}
 
-	unsigned int getPosBase() const { return _posBase; };
+	unsigned int getPosBase() const { return _posBase; }
 
-	std::wstring getLastCmdLabel() const { return _lastCmdLabel; };
+	const std::wstring& getLastCmdLabel() const { return _lastCmdLabel; }
 
 private:
 	std::vector<MenuItemUnit> _menuItems;
@@ -1455,18 +1363,27 @@ private:
 	std::wstring _lastCmdLabel;
 };
 
+struct LanguageNameInfo;
+
 class NppParameters final
 {
 private:
 	static NppParameters* getInstancePointer() {
 		static NppParameters* instance = new NppParameters;
 		return instance;
+	}
+
+	// XML Document with its path
+	struct XmlDocPath final
+	{
+		TiXmlDocument* _doc;
+		std::wstring _path;
 	};
 
 public:
 	static NppParameters& getInstance() {
 		return *getInstancePointer();
-	};
+	}
 
 	static LangType getLangIDFromStr(const wchar_t *langName);
 	static std::wstring getLocPathFromStr(const std::wstring & localizationCode);
@@ -1475,7 +1392,7 @@ public:
 	bool reloadLang();
 	bool reloadStylers(const wchar_t *stylePath = nullptr);
 	void destroyInstance();
-	std::wstring getSettingsFolder();
+	std::wstring getSettingsFolder() const;
 
 	bool _isTaskListRBUTTONUP_Active = false;
 	int L_END;
@@ -1493,81 +1410,80 @@ public:
 	}
 
 
-	Lang * getLangFromID(LangType langID) const
+	Lang* getLangFromID(LangType langID) const
 	{
 		for (int i = 0 ; i < _nbLang ; ++i)
 		{
 			if ( _langList[i] && _langList[i]->_langID == langID )
-				return _langList[i];
+				return _langList[i].get();
 		}
 		return nullptr;
 	}
 
-	Lang * getLangFromIndex(size_t i) const {
-		return (i < size_t(_nbLang)) ? _langList[i] : nullptr;
+	Lang* getLangFromIndex(size_t i) const {
+		return (i < static_cast<size_t>(_nbLang)) ? _langList[i].get() : nullptr;
 	}
 
-	int getNbLang() const {return _nbLang;};
+	int getNbLang() const { return _nbLang; }
 
 	LangType getLangFromExt(const wchar_t *ext);
 
-	const wchar_t * getLangExtFromName(const wchar_t *langName) const
+	const wchar_t* getLangExtFromName(const wchar_t* langName) const
 	{
 		for (int i = 0 ; i < _nbLang ; ++i)
 		{
 			if (_langList[i]->_langName == langName)
-				return _langList[i]->_defaultExtList;
+				return _langList[i]->getDefaultExtList();
 		}
 		return nullptr;
 	}
 
-	const wchar_t * getLangExtFromLangType(LangType langType) const
+	const wchar_t* getLangExtFromLangType(LangType langType) const
 	{
 		for (int i = 0 ; i < _nbLang ; ++i)
 		{
 			if (_langList[i]->_langID == langType)
-				return _langList[i]->_defaultExtList;
+				return _langList[i]->getDefaultExtList();
 		}
 		return nullptr;
 	}
 
-	int getNbLRFile() const {return _nbRecentFile;};
+	int getNbLRFile() const { return _nbRecentFile; }
 
-	std::wstring *getLRFile(int index) const {
-		return _LRFileList[index];
-	};
+	std::wstring* getLRFile(int index) const {
+		return _LRFileList[index].get();
+	}
 
 	void setNbMaxRecentFile(UINT nb) {
 		_nbMaxRecentFile = nb;
-	};
+	}
 
-	UINT getNbMaxRecentFile() const {return _nbMaxRecentFile;};
+	UINT getNbMaxRecentFile() const { return _nbMaxRecentFile; }
 
 	void setPutRecentFileInSubMenu(bool doSubmenu) {
 		_putRecentFileInSubMenu = doSubmenu;
 	}
 
-	bool putRecentFileInSubMenu() const {return _putRecentFileInSubMenu;};
+	bool putRecentFileInSubMenu() const { return _putRecentFileInSubMenu; }
 
 	void setRecentFileCustomLength(int len) {
 		_recentFileCustomLength = len;
 	}
 
-	int getRecentFileCustomLength() const {return _recentFileCustomLength;};
-
+	int getRecentFileCustomLength() const { return _recentFileCustomLength; }
 
 	const ScintillaViewParams& getSVP() const {
 		return _svp;
 	}
 
-	bool writeRecentFileHistorySettings(int nbMaxFile = -1) const;
+	bool writeRecentFileHistorySettings(int nbMaxFile = -1);
 	bool writeHistory(const wchar_t *fullpath);
 
-	bool writeProjectPanelsSettings() const;
-	bool writeColumnEditorSettings() const;
-	bool writeFileBrowserSettings(const std::vector<std::wstring> & rootPath, const std::wstring & latestSelectedItemPath) const;
+	bool writeProjectPanelsSettings();
+	bool writeColumnEditorSettings();
+	bool writeFileBrowserSettings(const std::vector<std::wstring>& rootPaths, const std::wstring& latestSelectedItemPath);
 
-	TiXmlNode* getChildElementByAttribut(TiXmlNode *pere, const wchar_t *childName, const wchar_t *attributName, const wchar_t *attributVal) const;
+	TiXmlNode* getChildElementByAttribute(TiXmlNode *pere, const wchar_t *childName, const wchar_t *attributeName, const wchar_t *attributeVal) const;
 
 	bool writeScintillaParams();
 	void createXmlTreeFromGUIParams();
@@ -1575,11 +1491,11 @@ public:
 	std::wstring writeStyles(LexerStylerArray & lexersStylers, StyleArray & globalStylers); // return "" if saving file succeeds, otherwise return the new saved file path
 	bool insertTabInfo(const wchar_t* langName, int tabInfo, bool backspaceUnindent);
 
-	LexerStylerArray & getLStylerArray() {return _lexerStylerVect;};
-	StyleArray & getGlobalStylers() {return _widgetStyleArray;};
+	LexerStylerArray& getLStylerArray() { return _lexerStylerVect; }
+	StyleArray& getGlobalStylers() { return _widgetStyleArray; }
 
-	StyleArray & getMiscStylerArray() {return _widgetStyleArray;};
-	GlobalOverride & getGlobalOverrideStyle() {return _nppGUI._globalOverride;};
+	StyleArray& getMiscStylerArray() { return _widgetStyleArray; }
+	GlobalOverride& getGlobalOverrideStyle() { return _nppGUI._globalOverride; }
 
 	COLORREF getCurLineHilitingColour();
 	void setCurLineHilitingColour(COLORREF colour2Set);
@@ -1589,24 +1505,24 @@ public:
 	const std::vector<std::wstring>& getFontList() const { return _fontlist; }
 
 	int getNbUserLang() const {return _nbUserLang;}
-	UserLangContainer & getULCFromIndex(size_t i) {return *_userLangArray[i];};
-	UserLangContainer * getULCFromName(const wchar_t *userLangName);
+	UserLangContainer* getULCFromIndex(size_t i) { return _userLangArray[i].get(); }
+	const UserLangContainer* getULCFromName(const wchar_t* userLangName) const;
 
-	int getNbExternalLang() const {return _nbExternalLang;};
+	int getNbExternalLang() const { return _nbExternalLang; }
 	int getExternalLangIndexFromName(const wchar_t *externalLangName) const;
 
-	ExternalLangContainer & getELCFromIndex(int i) {return *_externalLangArray[i];};
+	ExternalLangContainer* getELCFromIndex(int i) { return _externalLangArray[i].get(); }
 
-	bool ExternalLangHasRoom() const {return _nbExternalLang < NB_MAX_EXTERNAL_LANG;};
+	bool ExternalLangHasRoom() const { return _nbExternalLang < NB_MAX_EXTERNAL_LANG; }
 
 	void getExternalLexerFromXmlTree(TiXmlDocument* externalLexerDoc);
-	std::vector<TiXmlDocument *> * getExternalLexerDoc() { return &_pXmlExternalLexerDoc; };
+	std::vector<XmlDocPath>* getExternalLexerDoc() { return &_pXmlExternalLexerDoc; }
 
 	void writeDefaultUDL();
 	void writeNonDefaultUDL();
 	void writeNeed2SaveUDL();
 	void writeShortcuts();
-	void writeSession(const Session & session, const wchar_t *fileName = NULL);
+	void writeSession(const Session& session, const wchar_t* fileName = nullptr) const;
 	bool writeFindHistory();
 
 	bool isExistingUserLangName(const wchar_t *newName) const
@@ -1622,18 +1538,18 @@ public:
 		return false;
 	}
 
-	const wchar_t * getUserDefinedLangNameFromExt(wchar_t *ext, wchar_t *fullName) const;
+	const wchar_t* getUserDefinedLangNameFromExt(const wchar_t* ext, const wchar_t* fullName) const;
 
-	int addUserLangToEnd(const UserLangContainer & userLang, const wchar_t *newName);
+	int addUserLangToEnd(const UserLangContainer* userLang, const wchar_t *newName);
 	void removeUserLang(size_t index);
 
 	bool isExistingExternalLangName(const char* newName) const;
 
-	int addExternalLangToEnd(ExternalLangContainer * externalLang);
+	int addExternalLangToEnd(std::unique_ptr<ExternalLangContainer> externalLang);
 
-	TiXmlDocumentA * getNativeLangA() const {return _pXmlNativeLangDocA;};
+	NppXml::Document getNativeLang() const { return _pXmlNativeLangDoc; }
 
-	TiXmlDocument * getCustomizedToolIcons() const {return _pXmlToolIconsDoc;};
+	NppXml::Document getCustomizedToolButtons() const { return _pXmlToolButtonsConfDoc; }
 
 	bool isTransparentAvailable() const {
 		return (_winVersion >= WV_VISTA);
@@ -1641,66 +1557,66 @@ public:
 
 	// 0 <= percent < 256
 	// if (percent == 255) then opacq
-	void SetTransparent(HWND hwnd, int percent);
+	static void SetTransparent(HWND hwnd, int percent);
 
-	void removeTransparent(HWND hwnd);
+	static void removeTransparent(HWND hwnd);
 
 	void setCmdlineParam(const CmdLineParamsDTO & cmdLineParams)
 	{
 		_cmdLineParams = cmdLineParams;
 	}
 
-	const CmdLineParamsDTO & getCmdLineParams() const {return _cmdLineParams;};
+	const CmdLineParamsDTO& getCmdLineParams() const { return _cmdLineParams; }
 
 	const std::wstring& getCmdLineString() const { return _cmdLineString; }
 	void setCmdLineString(const std::wstring& str) { _cmdLineString = str; }
 
-	void setFileSaveDlgFilterIndex(int ln) {_fileSaveDlgFilterIndex = ln;};
-	int getFileSaveDlgFilterIndex() const {return _fileSaveDlgFilterIndex;};
+	void setFileSaveDlgFilterIndex(int ln) { _fileSaveDlgFilterIndex = ln; }
+	int getFileSaveDlgFilterIndex() const { return _fileSaveDlgFilterIndex; }
 
-	bool isRemappingShortcut() const {return _shortcuts.size() != 0;};
+	bool isRemappingShortcut() const { return _shortcuts.size() != 0; }
 
-	std::vector<CommandShortcut> & getUserShortcuts() { return _shortcuts; };
+	std::vector<CommandShortcut> & getUserShortcuts() { return _shortcuts; }
 	void addUserModifiedIndex(size_t index);
 
-	std::vector<MacroShortcut> & getMacroList() { return _macros; };
-	std::vector<UserCommand> & getUserCommandList() { return _userCommands; };
-	std::vector<PluginCmdShortcut> & getPluginCommandList() { return _pluginCommands; };
-	std::vector<size_t> & getPluginModifiedKeyIndices() { return _pluginCustomizedCmds; };
+	std::vector<MacroShortcut>& getMacroList() { return _macros; }
+	std::vector<UserCommand>& getUserCommandList() { return _userCommands; }
+	std::vector<PluginCmdShortcut>& getPluginCommandList() { return _pluginCommands; }
+	std::vector<size_t>& getPluginModifiedKeyIndices() { return _pluginCustomizedCmds; }
 	void addPluginModifiedIndex(size_t index);
 
-	std::vector<ScintillaKeyMap> & getScintillaKeyList() { return _scintillaKeyCommands; };
-	std::vector<int> & getScintillaModifiedKeyIndices() { return _scintillaModifiedKeyIndices; };
+	std::vector<ScintillaKeyMap>& getScintillaKeyList() { return _scintillaKeyCommands; }
+	std::vector<int>& getScintillaModifiedKeyIndices() { return _scintillaModifiedKeyIndices; }
 	void addScintillaModifiedIndex(int index);
 
-	const Session & getSession() const {return _session;};
+	const Session& getSession() const { return _session; }
 
-	std::vector<MenuItemUnit>& getContextMenuItems() { return _contextMenuItems; };
-	std::vector<MenuItemUnit>& getTabContextMenuItems() { return _tabContextMenuItems; };
-	DynamicMenu& getMacroMenuItems() { return _macroMenuItems; };
-	DynamicMenu& getRunMenuItems() { return _runMenuItems; };
-	bool hasCustomContextMenu() const {return !_contextMenuItems.empty();};
-	bool hasCustomTabContextMenu() const {return !_tabContextMenuItems.empty();};
+	std::vector<MenuItemUnit>& getContextMenuItems() { return _contextMenuItems; }
+	std::vector<MenuItemUnit>& getTabContextMenuItems() { return _tabContextMenuItems; }
+	DynamicMenu& getMacroMenuItems() { return _macroMenuItems; }
+	DynamicMenu& getRunMenuItems() { return _runMenuItems; }
+	bool hasCustomContextMenu() const { return !_contextMenuItems.empty(); }
+	bool hasCustomTabContextMenu() const { return !_tabContextMenuItems.empty(); }
 
-	void setAccelerator(Accelerator *pAccel) {_pAccelerator = pAccel;};
-	Accelerator * getAccelerator() {return _pAccelerator;};
-	void setScintillaAccelerator(ScintillaAccelerator *pScintAccel) {_pScintAccelerator = pScintAccel;};
-	ScintillaAccelerator * getScintillaAccelerator() {return _pScintAccelerator;};
+	void setAccelerator(Accelerator* pAccel) { _pAccelerator = pAccel; }
+	Accelerator * getAccelerator() { return _pAccelerator; }
+	void setScintillaAccelerator(ScintillaAccelerator* pScintAccel) { _pScintAccelerator = pScintAccel; }
+	ScintillaAccelerator* getScintillaAccelerator() { return _pScintAccelerator; }
 
-	std::wstring getNppPath() const {return _nppPath;};
-	std::wstring getContextMenuPath() const {return _contextMenuPath;};
-	const wchar_t * getAppDataNppDir() const {return _appdataNppDir.c_str();};
-	const wchar_t * getPluginRootDir() const { return _pluginRootDir.c_str(); };
-	const wchar_t * getPluginConfDir() const { return _pluginConfDir.c_str(); };
-	const wchar_t * getUserPluginConfDir() const { return _userPluginConfDir.c_str(); };
-	const wchar_t * getWorkingDir() const {return _currentDirectory.c_str();};
-	const wchar_t * getWorkSpaceFilePath(int i) const {
+	const std::wstring& getNppPath() const { return _nppPath; }
+	const std::wstring& getContextMenuPath() const { return _contextMenuPath; }
+	const wchar_t* getAppDataNppDir() const { return _appdataNppDir.c_str(); }
+	const wchar_t* getPluginRootDir() const { return _pluginRootDir.c_str(); }
+	const wchar_t* getPluginConfDir() const { return _pluginConfDir.c_str(); }
+	const wchar_t* getUserPluginConfDir() const { return _userPluginConfDir.c_str(); }
+	const wchar_t* getWorkingDir() const { return _currentDirectory.c_str(); }
+	const wchar_t* getWorkSpaceFilePath(int i) const {
 		if (i < 0 || i > 2) return nullptr;
-		return _workSpaceFilePathes[i].c_str();
-	};
+		return _workSpaceFilePaths[i].c_str();
+	}
 
-	const std::vector<std::wstring> getFileBrowserRoots() const { return _fileBrowserRoot; };
-	std::wstring getFileBrowserSelectedItemPath() const { return _fileBrowserSelectedItemPath; };
+	const std::vector<std::wstring>& getFileBrowserRoots() const { return _fileBrowserRoot; }
+	const std::wstring& getFileBrowserSelectedItemPath() const { return _fileBrowserSelectedItemPath; }
 
 	void setWorkSpaceFilePath(int i, const wchar_t *wsFile);
 
@@ -1708,35 +1624,35 @@ public:
 
 	void setStartWithLocFileName(const std::wstring& locPath) {
 		_startWithLocFileName = locPath;
-	};
+	}
 
 	void setFunctionListExportBoolean(bool doIt) {
 		_doFunctionListExport = doIt;
-	};
+	}
 	bool doFunctionListExport() const {
 		return _doFunctionListExport;
-	};
+	}
 
 	void setPrintAndExitBoolean(bool doIt) {
 		_doPrintAndExit = doIt;
-	};
+	}
 	bool doPrintAndExit() const {
 		return _doPrintAndExit;
-	};
+	}
 
 	bool loadSession(Session& session, const wchar_t* sessionFileName, const bool bSuppressErrorMsg = false);
 
 	void setLoadedSessionFilePath(const std::wstring & loadedSessionFilePath) {
 		_loadedSessionFullFilePath = loadedSessionFilePath;
-	};
+	}
 
-	std::wstring getLoadedSessionFilePath() {
+	const std::wstring& getLoadedSessionFilePath() const {
 		return _loadedSessionFullFilePath;
-	};
+	}
 
 	int langTypeToCommandID(LangType lt) const;
 
-	struct FindDlgTabTitiles final {
+	struct FindDlgTabTitles final {
 		std::wstring _find;
 		std::wstring _replace;
 		std::wstring _findInFiles;
@@ -1744,22 +1660,38 @@ public:
 		std::wstring _mark;
 	};
 
-	FindDlgTabTitiles & getFindDlgTabTitiles() { return _findDlgTabTitiles;};
+	FindDlgTabTitles& getFindDlgTabTitles() { return _findDlgTabTitles; }
 
-	bool asNotepadStyle() const {return _asNotepadStyle;};
+	bool asNotepadStyle() const { return _asNotepadStyle; }
 
 	bool reloadPluginCmds() {
 		return getPluginCmdsFromXmlTree();
 	}
 
-	bool getContextMenuFromXmlTree(HMENU mainMenuHadle, HMENU pluginsMenu, bool isEditCM = true);
-	bool reloadContextMenuFromXmlTree(HMENU mainMenuHadle, HMENU pluginsMenu);
-	winVer getWinVersion() const {return _winVersion;};
+	bool getContextMenuFromXmlTree(HMENU mainMenuHandle, HMENU pluginsMenu, bool isEditCM = true);
+	bool reloadContextMenuFromXmlTree(HMENU mainMenuHandle, HMENU pluginsMenu);
+	winVer getWinVersion() const { return _winVersion; }
 	std::wstring getWinVersionStr() const;
 	std::wstring getWinVerBitStr() const;
-	FindHistory & getFindHistory() {return _findHistory;};
+
+	int currentSystemCodepage() const { return _currentSystemCodepage; }
+	bool isCurrentSystemCodepageUTF8() const { return _currentSystemCodepage == 65001; }
+	int defaultCodepage() const { // return all the codepage except UTF8 (65001)
+		if (isCurrentSystemCodepageUTF8())
+		{
+			int localCodepage = 0;
+			// Get the system default codepage, which is the codepage before "Beta: Use Unicode UTF-8 for worldwide language support" option being checked
+			GetLocaleInfoEx(LOCALE_NAME_SYSTEM_DEFAULT, LOCALE_IDEFAULTANSICODEPAGE | LOCALE_RETURN_NUMBER, reinterpret_cast<LPTSTR>(&localCodepage), 2);
+			return localCodepage;
+		}
+		return _currentSystemCodepage;
+	}
+
+	FindHistory& getFindHistory() { return _findHistory; }
 	bool _isFindReplacing = false; // an on the fly variable for find/replace functions
+#ifndef	_WIN64
 	void safeWow64EnableWow64FsRedirection(BOOL Wow64FsEnableRedirection);
+#endif
 
 	LocalizationSwitcher & getLocalizationSwitcher() {
 		return _localizationSwitcher;
@@ -1767,17 +1699,6 @@ public:
 
 	ThemeSwitcher & getThemeSwitcher() {
 		return _themeSwitcher;
-	}
-
-	std::vector<std::wstring> & getBlackList() { return _blacklist; };
-	bool isInBlackList(const wchar_t* fn) const
-	{
-		for (const auto& element: _blacklist)
-		{
-			if (element == fn)
-				return true;
-		}
-		return false;
 	}
 
 	bool importUDLFromFile(const std::wstring& sourceFile);
@@ -1797,25 +1718,21 @@ public:
 		return _isCloud;
 	}
 
-	void saveConfig_xml();
+	void saveConfig_xml() const;
 
-	std::wstring getUserPath() const {
+	const std::wstring& getUserPath() const {
 		return _userPath;
 	}
 
-	std::wstring getUserDefineLangFolderPath() const {
+	const std::wstring& getUserDefineLangFolderPath() const {
 		return _userDefineLangsFolderPath;
 	}
 
-	std::wstring getUserDefineLangPath() const {
-		return _userDefineLangPath;
-	}
-
-	bool writeSettingsFilesOnCloudForThe1stTime(const std::wstring & cloudSettingsPath);
-	void setCloudChoice(const wchar_t *pathChoice);
-	void removeCloudChoice();
+	bool writeSettingsFilesOnCloudForThe1stTime(const std::wstring& cloudSettingsPath) const;
+	void setCloudChoice(const wchar_t* pathChoice) const;
+	void removeCloudChoice() const;
 	bool isCloudPathChanged() const;
-	int archType() const { return ARCH_TYPE; };
+	static constexpr int archType() { return ARCH_TYPE; }
 	COLORREF getCurrentDefaultBgColor() const {
 		return _currentDefaultBgColor;
 	}
@@ -1834,7 +1751,7 @@ public:
 
 	void setCmdSettingsDir(const std::wstring& settingsDir) {
 		_cmdSettingsDir = settingsDir;
-	};
+	}
 
 	void setTitleBarAdd(const std::wstring& titleAdd) {
 		_titleBarAdditional = titleAdd;
@@ -1844,16 +1761,26 @@ public:
 		return _titleBarAdditional;
 	}
 
-	DPIManager _dpiManager;
-
 	std::wstring static getSpecialFolderLocation(int folderKind);
 
 	void setUdlXmlDirtyFromIndex(size_t i);
 	void setUdlXmlDirtyFromXmlDoc(const TiXmlDocument* xmlDoc);
 	void removeIndexFromXmlUdls(size_t i);
-	bool isStylerDocLoaded() const { return _pXmlUserStylerDoc != nullptr; };
+	bool isStylerDocLoaded() const { return _pXmlUserStylerDoc._doc != nullptr; }
 
 	ColumnEditorParam _columnEditParam;
+	unsigned long getScintillaModEventMask() const { return _sintillaModEventMask; }
+	void addScintillaModEventMask(unsigned long mask2Add) { _sintillaModEventMask |= mask2Add; }
+	bool isAsNotepadStyle() const { return _asNotepadStyle; }
+
+	static LanguageNameInfo getLangNameInfoFromNameID(const std::wstring& langNameID);
+
+	void setNbTabCompactLabelLen(UINT nb) {
+		_nppGUI._tabCompactLabelLen = nb;
+	}
+	UINT getNbTabCompactLabelLen() const { return _nppGUI._tabCompactLabelLen; }
+
+	static void buildGupParams(std::wstring& params);
 
 private:
 	NppParameters();
@@ -1868,28 +1795,28 @@ private:
 	NppParameters& operator=(NppParameters&&) = delete;
 
 
-	TiXmlDocument *_pXmlDoc = nullptr; // langs.xml
+	XmlDocPath _pXmlDoc{}; // langs.xml
 	TiXmlDocument *_pXmlUserDoc = nullptr; // config.xml
-	TiXmlDocument *_pXmlUserStylerDoc = nullptr; // stylers.xml
-	TiXmlDocument *_pXmlUserLangDoc = nullptr; // userDefineLang.xml
+	XmlDocPath _pXmlUserStylerDoc{}; // stylers.xml
+	XmlDocPath _pXmlUserLangDoc{}; // userDefineLang.xml
 	std::vector<UdlXmlFileState> _pXmlUserLangsDoc; // userDefineLang customized XMLs
-	TiXmlDocument *_pXmlToolIconsDoc = nullptr; // toolbarIcons.xml
+	NppXml::Document _pXmlToolButtonsConfDoc = nullptr; // toolbarButtonsConf.xml
 
-	TiXmlDocumentA *_pXmlShortcutDocA = nullptr; // shortcuts.xml
+	NppXml::Document _pXmlShortcutDoc = nullptr; // shortcuts.xml
 
-	TiXmlDocumentA *_pXmlNativeLangDocA = nullptr; // nativeLang.xml
-	TiXmlDocumentA *_pXmlContextMenuDocA = nullptr; // contextMenu.xml
-	TiXmlDocumentA *_pXmlTabContextMenuDocA = nullptr; // tabContextMenu.xml
+	NppXml::Document _pXmlNativeLangDoc = nullptr; // nativeLang.xml
+	NppXml::Document _pXmlContextMenuDoc = nullptr; // contextMenu.xml
+	NppXml::Document _pXmlTabContextMenuDoc = nullptr; // tabContextMenu.xml
 
-	std::vector<TiXmlDocument *> _pXmlExternalLexerDoc; // External lexer plugins' XMLs
+	std::vector<XmlDocPath> _pXmlExternalLexerDoc; // External lexer plugins' XMLs
 
 	NppGUI _nppGUI;
 	ScintillaViewParams _svp;
-	Lang* _langList[NB_LANG] = { nullptr };
+	std::unique_ptr<Lang> _langList[NB_LANG] = { nullptr };
 	int _nbLang = 0;
 
 	// Recent File History
-	std::wstring* _LRFileList[NB_MAX_LRF_FILE] = { nullptr };
+	std::unique_ptr<std::wstring> _LRFileList[NB_MAX_LRF_FILE] = { nullptr };
 	int _nbRecentFile = 0;
 	UINT _nbMaxRecentFile = 10;
 	bool _putRecentFileInSubMenu = false;
@@ -1899,11 +1826,11 @@ private:
 
 	FindHistory _findHistory;
 
-	UserLangContainer* _userLangArray[NB_MAX_USER_LANG] = { nullptr };
+	std::unique_ptr<UserLangContainer> _userLangArray[NB_MAX_USER_LANG] = { nullptr };
 	unsigned char _nbUserLang = 0; // won't be exceeded to 255;
 	std::wstring _userDefineLangsFolderPath;
 	std::wstring _userDefineLangPath;
-	ExternalLangContainer* _externalLangArray[NB_MAX_EXTERNAL_LANG] = { nullptr };
+	std::unique_ptr<ExternalLangContainer> _externalLangArray[NB_MAX_EXTERNAL_LANG] = { nullptr };
 	int _nbExternalLang = 0;
 
 	CmdLineParamsDTO _cmdLineParams;
@@ -1916,7 +1843,6 @@ private:
 	StyleArray _widgetStyleArray;
 
 	std::vector<std::wstring> _fontlist;
-	std::vector<std::wstring> _blacklist;
 
 	bool _isLocal = false;
 	bool _isx64 = false; // by default 32-bit
@@ -1930,19 +1856,18 @@ private:
 	std::array<HLSColour, 5> individualTabHuesFor_Dark{ { HLSColour{37, 60, 60}, HLSColour{70, 60, 60}, HLSColour{144, 70, 60}, HLSColour{255, 60, 60}, HLSColour{195, 60, 60} } };
 	std::array<HLSColour, 5> individualTabHues{ { HLSColour{37, 210, 150}, HLSColour{70, 210, 150}, HLSColour{144, 210, 150}, HLSColour{255, 210, 150}, HLSColour{195, 210, 150}} };
 
-	std::array<COLORREF, 3> findDlgStatusMessageColor{ red, blue, darkGreen};
+	std::array<COLORREF, 4> findDlgStatusMessageColor{ red, blue, darkGreen, orange };
 
 public:
-	void setShortcutDirty() { _isAnyShortcutModified = true; };
+	void setShortcutDirty() { _isAnyShortcutModified = true; }
 	void setAdminMode(bool isAdmin) { _isAdminMode = isAdmin; }
 	bool isAdmin() const { return _isAdminMode; }
 	bool regexBackward4PowerUser() const { return _findHistory._regexBackward4PowerUser; }
-	bool isSelectFgColorEnabled() const { return _isSelectFgColorEnabled; };
-	bool isRegForOSAppRestartDisabled() const { return _isRegForOSAppRestartDisabled; };
+	bool isRegForOSAppRestartDisabled() const { return _isRegForOSAppRestartDisabled; }
 
 private:
 	bool _isAnyShortcutModified = false;
-	std::vector<CommandShortcut> _shortcuts;			//main menu shortuts. Static size
+	std::vector<CommandShortcut> _shortcuts;			//main menu shortcuts. Static size
 	std::vector<size_t> _customizedShortcuts;			//altered main menu shortcuts. Indices static. Needed when saving alterations
 	std::vector<MacroShortcut> _macros;				//macro shortcuts, dynamic size, defined on loading macros and adding/deleting them
 	std::vector<UserCommand> _userCommands;			//run shortcuts, dynamic size, defined on loading run commands and adding/deleting them
@@ -1977,7 +1902,7 @@ private:
 	std::wstring _pluginConfDir; // plugins config dir where the plugin list is installed
 	std::wstring _userPluginConfDir; // plugins config dir for per user where the plugin parameters are saved / loaded
 	std::wstring _currentDirectory;
-	std::wstring _workSpaceFilePathes[3];
+	std::wstring _workSpaceFilePaths[3];
 
 	std::vector<std::wstring> _fileBrowserRoot;
 	std::wstring _fileBrowserSelectedItemPath;
@@ -1985,7 +1910,7 @@ private:
 	Accelerator* _pAccelerator = nullptr;
 	ScintillaAccelerator* _pScintAccelerator = nullptr;
 
-	FindDlgTabTitiles _findDlgTabTitiles;
+	FindDlgTabTitles _findDlgTabTitles;
 	bool _asNotepadStyle = false;
 
 	winVer _winVersion = WV_UNKNOWN;
@@ -2004,7 +1929,6 @@ private:
 	bool _isElevationRequired = false;
 	bool _isAdminMode = false;
 
-	bool _isSelectFgColorEnabled = false;
 	bool _isRegForOSAppRestartDisabled = false;
 
 	bool _doNppLogNetworkDriveIssue = false;
@@ -2016,28 +1940,29 @@ private:
 	bool _isPlaceHolderEnabled = false;
 	bool _theWarningHasBeenGiven = false;
 
+	int _currentSystemCodepage = -1;
+
 public:
-	std::wstring getWingupFullPath() const { return _wingupFullPath; };
-	std::wstring getWingupParams() const { return _wingupParams; };
-	std::wstring getWingupDir() const { return _wingupDir; };
-	bool shouldDoUAC() const { return _isElevationRequired; };
-	void setWingupFullPath(const std::wstring& val2set) { _wingupFullPath = val2set; };
-	void setWingupParams(const std::wstring& val2set) { _wingupParams = val2set; };
-	void setWingupDir(const std::wstring& val2set) { _wingupDir = val2set; };
-	void setElevationRequired(bool val2set) { _isElevationRequired = val2set; };
+	const std::wstring& getWingupFullPath() const { return _wingupFullPath; }
+	const std::wstring& getWingupParams() const { return _wingupParams; }
+	const std::wstring& getWingupDir() const { return _wingupDir; }
+	bool shouldDoUAC() const { return _isElevationRequired; }
+	void setWingupFullPath(const std::wstring& val2set) { _wingupFullPath = val2set; }
+	void setWingupParams(const std::wstring& val2set) { _wingupParams = val2set; }
+	void setWingupDir(const std::wstring& val2set) { _wingupDir = val2set; }
+	void setElevationRequired(bool val2set) { _isElevationRequired = val2set; }
 
-	bool doNppLogNetworkDriveIssue() const { return _doNppLogNetworkDriveIssue; };
-	bool doNppLogNulContentCorruptionIssue() const { return _doNppLogNulContentCorruptionIssue; };
-	void endSessionStart() { _isEndSessionStarted = true; };
-	bool isEndSessionStarted() const { return _isEndSessionStarted; };
-	void makeEndSessionCritical() { _isEndSessionCritical = true; };
-	bool isEndSessionCritical() const { return _isEndSessionCritical; };
+	bool doNppLogNetworkDriveIssue() const { return _doNppLogNetworkDriveIssue; }
+	bool doNppLogNulContentCorruptionIssue() const { return _doNppLogNulContentCorruptionIssue; }
+	void endSessionStart() { _isEndSessionStarted = true; }
+	bool isEndSessionStarted() const { return _isEndSessionStarted; }
+	void makeEndSessionCritical() { _isEndSessionCritical = true; }
+	bool isEndSessionCritical() const { return _isEndSessionCritical; }
 
-	void setPlaceHolderEnable(bool isEnabled) { _isPlaceHolderEnabled = isEnabled; };
+	void setPlaceHolderEnable(bool isEnabled) { _isPlaceHolderEnabled = isEnabled; }
 	bool isPlaceHolderEnabled() const { return _isPlaceHolderEnabled; }
-	void setTheWarningHasBeenGiven(bool isEnabled) { _theWarningHasBeenGiven = isEnabled; };
+	void setTheWarningHasBeenGiven(bool isEnabled) { _theWarningHasBeenGiven = isEnabled; }
 	bool theWarningHasBeenGiven() const { return _theWarningHasBeenGiven; }
-
 
 	void initTabCustomColors();
 	void setIndividualTabColor(COLORREF colour2Set, int colourIndex, bool isDarkMode);
@@ -2053,13 +1978,25 @@ private:
 	bool getUserStylersFromXmlTree();
 	std::pair<unsigned char, unsigned char> addUserDefineLangsFromXmlTree(TiXmlDocument *tixmldoc);
 
+	enum class ConfXml { lang, styles };
+	bool updateFromModelXml(TiXmlNode* rootUser, ConfXml whichConf);
+	void updateLangXml(TiXmlElement* mainElemUser, TiXmlElement* mainElemModel);
+	void updateStylesXml(TiXmlElement* rootUser, const std::wstring& userDocPath, TiXmlElement* rootModel, TiXmlElement* mainElemUser, TiXmlElement* mainElemModel);
+	void addDefaultStyles(TiXmlNode* node);
+	int addStyleDefaultColors(TiXmlNode* globalStyleRoot,
+		const std::wstring& name,
+		const std::wstring& fgColor = L"",
+		const std::wstring& bgColor = L"",
+		const std::wstring& fromStyle = L"",
+		const std::wstring& styleID = L"0");
+
 	bool getShortcutsFromXmlTree();
 
 	bool getMacrosFromXmlTree();
 	bool getUserCmdsFromXmlTree();
 	bool getPluginCmdsFromXmlTree();
 	bool getScintKeysFromXmlTree();
-	bool getSessionFromXmlTree(TiXmlDocument *pSessionDoc, Session& session);
+	static bool getSessionFromXmlTree(const NppXml::Document& pSessionDoc, Session& session);
 
 	void feedGUIParameters(TiXmlNode *node);
 	void feedKeyWordsParameters(TiXmlNode *node);
@@ -2076,31 +2013,31 @@ private:
 	void feedUserStyles(TiXmlNode *node);
 	void feedUserKeywordList(TiXmlNode *node);
 	void feedUserSettings(TiXmlNode *node);
-	void feedShortcut(TiXmlNodeA *node);
-	void feedMacros(TiXmlNodeA *node);
-	void feedUserCmds(TiXmlNodeA *node);
-	void feedPluginCustomizedCmds(TiXmlNodeA *node);
-	void feedScintKeys(TiXmlNodeA *node);
+	void feedShortcut(const NppXml::Element& element);
+	void feedMacros(const NppXml::Element& element);
+	void feedUserCmds(const NppXml::Element& element);
+	void feedPluginCustomizedCmds(const NppXml::Element& element);
+	void feedScintKeys(const NppXml::Element& element);
 
-	void getActions(TiXmlNodeA *node, Macro & macro);
-	bool getShortcuts(TiXmlNodeA *node, Shortcut & sc, std::string* folderName = nullptr);
-	bool getInternalCommandShortcuts(TiXmlNodeA* node, CommandShortcut& cs, std::string* folderName = nullptr);
+	static void getActions(const NppXml::Element& element, Macro& macro);
+	static bool getShortcuts(const NppXml::Element& element, Shortcut& sc, std::string* folderName = nullptr);
+	static bool getInternalCommandShortcuts(const NppXml::Element& element, CommandShortcut& cs, std::string* folderName = nullptr);
 
-	void writeStyle2Element(const Style & style2Write, Style & style2Sync, TiXmlElement *element);
-	void insertUserLang2Tree(TiXmlNode *node, UserLangContainer *userLang);
-	void insertCmd(TiXmlNodeA *cmdRoot, const CommandShortcut & cmd);
-	void insertMacro(TiXmlNodeA *macrosRoot, const MacroShortcut & macro, const std::string& folderName);
-	void insertUserCmd(TiXmlNodeA *userCmdRoot, const UserCommand & userCmd, const std::string& folderName);
-	void insertScintKey(TiXmlNodeA *scintKeyRoot, const ScintillaKeyMap & scintKeyMap);
-	void insertPluginCmd(TiXmlNodeA *pluginCmdRoot, const PluginCmdShortcut & pluginCmd);
+	static void writeStyle2Element(const Style& style2Write, Style& style2Sync, TiXmlElement* element);
+	static void insertUserLang2Tree(TiXmlNode* node, const UserLangContainer* userLang);
+	static void insertCmd(NppXml::Element& cmdRoot, const CommandShortcut& cmd);
+	static void insertMacro(NppXml::Element& macrosRoot, const MacroShortcut& macro, const std::string& folderName);
+	static void insertUserCmd(NppXml::Element& userCmdRoot, const UserCommand& userCmd, const std::string& folderName);
+	static void insertScintKey(NppXml::Element& scintKeyRoot, const ScintillaKeyMap& scintKeyMap);
+	static void insertPluginCmd(NppXml::Element& pluginCmdRoot, const PluginCmdShortcut& pluginCmd);
 	TiXmlElement * insertGUIConfigBoolNode(TiXmlNode *r2w, const wchar_t *name, bool bVal);
 	void insertDockingParamNode(TiXmlNode *GUIRoot);
 	void writeExcludedLangList(TiXmlElement *element);
 	void writePrintSetting(TiXmlElement *element);
 	void initMenuKeys();		//initialise menu keys and scintilla keys. Other keys are initialized on their own
 	void initScintillaKeys();	//these functions have to be called first before any modifications are loaded
-	int getCmdIdFromMenuEntryItemName(HMENU mainMenuHadle, const std::wstring& menuEntryName, const std::wstring& menuItemName); // return -1 if not found
-	int getPluginCmdIdFromMenuEntryItemName(HMENU pluginsMenu, const std::wstring& pluginName, const std::wstring& pluginCmdName); // return -1 if not found
+	static int getCmdIdFromMenuEntryItemName(HMENU mainMenuHandle, const std::wstring& menuEntryName, const std::wstring& menuItemName); // return -1 if not found
+	static int getPluginCmdIdFromMenuEntryItemName(HMENU pluginsMenu, const std::wstring& pluginName, const std::wstring& pluginCmdName); // return -1 if not found
 	winVer getWindowsVersion();
-
+	unsigned long _sintillaModEventMask = SC_MOD_DELETETEXT | SC_MOD_INSERTTEXT | SC_PERFORMED_UNDO | SC_PERFORMED_REDO | SC_MOD_CHANGEINDICATOR;
 };

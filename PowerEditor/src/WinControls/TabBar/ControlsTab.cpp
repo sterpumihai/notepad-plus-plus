@@ -39,21 +39,8 @@ void ControlsTab::activateWindowAt(int index)
 void ControlsTab::reSizeTo(RECT & rc)
 {
 	TabBar::reSizeTo(rc);
-	rc.left += marge;
-	rc.top += marge;
-	
-	//-- We do those dirty things 
-	//-- because it's a "vertical" tab control
-    if (_isVertical)
-    {
-	    rc.right -= 40;
-	    rc.bottom -= 20;
-	    if (getRowCount() == 2)
-	    {
-		    rc.right -= 20;
-	    }
-    }
-	//-- end of dirty things
+	rc.left += 8;
+	rc.top += 8;
 	rc.bottom -= 55;
 	rc.right -= 20;
 
@@ -74,6 +61,7 @@ bool ControlsTab::renameTab(const wchar_t *internalName, const wchar_t *newName)
 			break;
 		}
 	}
+
 	if (!foundIt)
 		return false;
 
@@ -83,8 +71,8 @@ bool ControlsTab::renameTab(const wchar_t *internalName, const wchar_t *newName)
 
 void ControlsTab::renameTab(size_t index, const wchar_t *newName)
 {
-	TCITEM tie;
+	TCITEM tie{};
 	tie.mask = TCIF_TEXT;
-	tie.pszText = (wchar_t *)newName;
+	tie.pszText = const_cast<wchar_t*>(newName);
 	TabCtrl_SetItem(_hSelf, index, &tie);
 }

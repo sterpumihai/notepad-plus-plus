@@ -17,16 +17,19 @@
 
 #pragma once
 
-#include "dockingResource.h"
-#include "Docking.h"
+#include <windows.h>
 
-#include <assert.h>
 #include <shlwapi.h>
-#include "Common.h"
-#include "StaticDialog.h"
+
+#include <array>
+#include <cassert>
+#include <string>
+
+#include "Docking.h"
+#include "Notepad_plus_msgs.h"
 #include "NppDarkMode.h"
-
-
+#include "StaticDialog.h"
+#include "dockingResource.h"
 
 class DockingDlgInterface : public StaticDialog
 {
@@ -41,7 +44,7 @@ public:
 		_moduleName = ::PathFindFileName(temp);
 	}
 
-	void create(tTbData* data, bool isRTL = false) {
+	virtual void create(tTbData* data, bool isRTL = false) {
 		assert(data != nullptr);
 		StaticDialog::create(_dlgID, isRTL);
 		wchar_t temp[MAX_PATH];
@@ -56,7 +59,12 @@ public:
 		data->uMask = 0;
 
 		// additional info
-		data->pszAddInfo = NULL;
+		data->pszAddInfo = nullptr;
+	}
+
+	virtual void create(tTbData* data, std::array<int, 3> iconIDs, bool isRTL = false) {
+		create(data, isRTL);
+		_iconIDs = iconIDs;
 	}
 
 	virtual void updateDockingDlg() {
@@ -82,13 +90,20 @@ public:
 		return _moduleName.c_str();
 	}
 
+	const std::array<int, 3>& getIconIDs() const {
+		return _iconIDs;
+	}
+
 protected :
 	int	_dlgID = -1;
-	bool _isFloating = true;
 	int _iDockedPos = 0;
 	std::wstring _moduleName;
 	std::wstring _pluginName;
+	std::array<int, 3> _iconIDs{};
+	bool _isFloating = true;
 	bool _isClosed = false;
+
+	using StaticDialog::create;
 
 	intptr_t CALLBACK run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam) override {
 		switch (message)
@@ -100,14 +115,14 @@ protected :
 					break;
 				}
 
-				RECT rc = {};
+				RECT rc{};
 				getClientRect(rc);
-				::FillRect(reinterpret_cast<HDC>(wParam), &rc, NppDarkMode::getDarkerBackgroundBrush());
+				::FillRect(reinterpret_cast<HDC>(wParam), &rc, NppDarkMode::getDlgBackgroundBrush());
 				return TRUE;
 			}
-			case WM_NOTIFY: 
+			case WM_NOTIFY:
 			{
-				LPNMHDR	pnmh = reinterpret_cast<LPNMHDR>(lParam);
+				auto* pnmh = reinterpret_cast<LPNMHDR>(lParam);
 
 				if (pnmh->hwndFrom == _hParent)
 				{
@@ -138,5 +153,5 @@ protected :
 				break;
 		}
 		return FALSE;
-	};
+	}
 };

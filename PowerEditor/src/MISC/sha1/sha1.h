@@ -227,7 +227,7 @@ public:
 
 	// Finalize hash; call it before using ReportHash(Stl)
 	void Final();
-
+/*
 #ifdef SHA1_UTILITY_FUNCTIONS
 	bool ReportHash(wchar_t* tszReport, REPORT_TYPE rtReportType = REPORT_HEX) const;
 #endif
@@ -236,7 +236,7 @@ public:
 	bool ReportHashStl(std::basic_string<wchar_t>& strOut, REPORT_TYPE rtReportType =
 		REPORT_HEX) const;
 #endif
-
+*/
 	// Get the raw message digest (20 bytes)
 	bool GetHash(UINT_8* pbDest20) const;
 
@@ -247,10 +247,10 @@ private:
 	// Member variables
 	UINT_32 m_state[5];
 	UINT_32 m_count[2];
-	UINT_32 m_reserved0[1]; // Memory alignment padding
+	[[maybe_unused]] UINT_32 m_reserved0[1]; // Memory alignment padding
 	UINT_8 m_buffer[64];
 	UINT_8 m_digest[20];
-	UINT_32 m_reserved1[3]; // Memory alignment padding
+	[[maybe_unused]] UINT_32 m_reserved1[3]; // Memory alignment padding
 
 	UINT_8 m_workspace[64];
 	SHA1_WORKSPACE_BLOCK* m_block; // SHA1 pointer to the byte array above

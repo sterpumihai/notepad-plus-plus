@@ -240,6 +240,7 @@ intptr_t CALLBACK ClipboardHistoryPanel::run_dlgProc(UINT message, WPARAM wParam
 					addToClipboadHistory(clipboardData);
 				}
 			}
+
 			if (_hwndNextCbViewer)
 				::SendMessage(_hwndNextCbViewer, message, wParam, lParam);
 			return TRUE;
@@ -287,14 +288,15 @@ intptr_t CALLBACK ClipboardHistoryPanel::run_dlgProc(UINT message, WPARAM wParam
 
 									(*_ppEditView)->execute(SCI_REPLACESEL, 0, reinterpret_cast<LPARAM>(""));
 									(*_ppEditView)->execute(SCI_ADDTEXT, strlen(c), reinterpret_cast<LPARAM>(c));
-									(*_ppEditView)->getFocus();
+									(*_ppEditView)->grabFocus();
 									delete[] c;
 								}
 							}
 							catch (...)
 							{
 								MessageBox(_hSelf,	L"Cannot process this clipboard data in the history:\nThe data is too large to be treated.", L"Clipboard problem", MB_OK | MB_APPLMODAL);
-								delete[] c;
+								if (c)
+									delete[] c;
 							}
 						}
 					}

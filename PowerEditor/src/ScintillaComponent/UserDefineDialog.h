@@ -14,24 +14,30 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+
 #pragma once
 
-#include "UserDefineResource.h"
-#include "ControlsTab.h"
-#include "ColourPicker.h"
-#include "Parameters.h"
-#include "URLCtrl.h"
-#include "SciLexer.h"
+#include <windows.h>
+
+#include <cwchar>
+#include <memory>
+#include <string>
 #include <unordered_map>
 
+#include <SciLexer.h>
+
+#include "ColourPicker.h"
+#include "ControlsTab.h"
+#include "Parameters.h"
+#include "StaticDialog.h"
+#include "URLCtrl.h"
+#include "UserDefineResource.h"
+#include "Window.h"
+
 class ScintillaEditView;
-class UserLangContainer;
-struct Style;
-#define WL_LEN_MAX 1024
-#define BOLD_MASK     1
-#define ITALIC_MASK   2
-const bool DOCK = true;
-const bool UNDOCK = false;
+
+inline constexpr bool DOCK = true;
+inline constexpr bool UNDOCK = false;
 
 class GlobalMappers
 {
@@ -231,7 +237,7 @@ class GlobalMappers
             setLexerMapper[SCE_USER_KWLIST_FOLDERS_IN_CODE1_OPEN] 	= "userDefine.foldersInCode1Open";
             setLexerMapper[SCE_USER_KWLIST_FOLDERS_IN_CODE1_MIDDLE] = "userDefine.foldersInCode1Middle";
             setLexerMapper[SCE_USER_KWLIST_FOLDERS_IN_CODE1_CLOSE] 	= "userDefine.foldersInCode1Close";
-        };
+        }
 };
 
 GlobalMappers & globalMappper();
@@ -247,7 +253,7 @@ protected :
     static UserLangContainer *_pUserLang;
     static ScintillaEditView *_pScintilla;
     intptr_t CALLBACK run_dlgProc(UINT Message, WPARAM wParam, LPARAM lParam) override;
-    bool setPropertyByCheck(HWND hwnd, WPARAM id, bool & bool2set);
+	static bool setPropertyByCheck(HWND hwnd, WPARAM id, bool& bool2set);
     virtual void setKeywords2List(int ctrlID) = 0;
 };
 
@@ -260,7 +266,7 @@ protected :
     intptr_t CALLBACK run_dlgProc(UINT Message, WPARAM wParam, LPARAM lParam) override;
     void setKeywords2List(int ctrlID) override;
 private :
-    void retrieve(wchar_t *dest, const wchar_t *toRetrieve, wchar_t *prefix) const;
+	static void retrieve(wchar_t* dest, const wchar_t* toRetrieve, const wchar_t* prefix);
     URLCtrl _pageLink;
 };
 
@@ -283,7 +289,7 @@ protected :
     intptr_t CALLBACK run_dlgProc(UINT Message, WPARAM wParam, LPARAM lParam) override;
     void setKeywords2List(int id) override;
 private :
-    void retrieve(wchar_t *dest, const wchar_t *toRetrieve, const wchar_t *prefix) const;
+	static void retrieve(wchar_t* dest, const wchar_t* toRetrieve, const wchar_t* prefix);
 };
 
 class SymbolsStyleDialog : public SharedParametersDialog
@@ -295,7 +301,7 @@ protected :
     intptr_t CALLBACK run_dlgProc(UINT Message, WPARAM wParam, LPARAM lParam) override;
     void setKeywords2List(int id) override;
 private :
-    void retrieve(wchar_t *dest, const wchar_t *toRetrieve, wchar_t *prefix) const;
+	static void retrieve(wchar_t* dest, const wchar_t* toRetrieve, const wchar_t* prefix);
 };
 
 class UserDefineDialog : public SharedParametersDialog
@@ -303,63 +309,63 @@ class UserDefineDialog : public SharedParametersDialog
 friend class ScintillaEditView;
 public :
     UserDefineDialog();
-    ~UserDefineDialog();
+    ~UserDefineDialog() override;
     void init(HINSTANCE hInst, HWND hPere, ScintillaEditView *pSev) {
         if (!_pScintilla)
         {
             Window::init(hInst, hPere);
             _pScintilla = pSev;
         }
-    };
-    void setScintilla(ScintillaEditView *pScinView) {
+    }
+	static void setScintilla(ScintillaEditView* pScinView) {
         _pScintilla = pScinView;
-    };
+    }
 
     void destroy() override {
         // A Ajouter les fils...
-    };
+    }
     int getWidth() const override {
         return _dlgPos.right;
-    };
+    }
     int getHeight() const override {
         return _dlgPos.bottom;
-    };
+    }
     void doDialog(bool willBeShown = true, bool isRTL = false) {
         if (!isCreated())
             create(IDD_GLOBAL_USERDEFINE_DLG, isRTL);
         display(willBeShown);
-    };
+    }
     void reSizeTo(RECT & rc) override// should NEVER be const !!!
     {
         Window::reSizeTo(rc);
         display(false);
         display();
-    };
+    }
     void reloadLangCombo();
     void changeStyle();
-    bool isDocked() const {return _status == DOCK;};
-    void setDockStatus(bool isDocked) {_status = isDocked;};
+    bool isDocked() const { return _status == DOCK; }
+    void setDockStatus(bool isDocked) { _status = isDocked; }
     HWND getFolderHandle() const {
         return _folderStyleDlg.getHSelf();
-    };
+    }
     HWND getKeywordsHandle() const {
         return _keyWordsStyleDlg.getHSelf();
-    };
+    }
     HWND getCommentHandle() const {
         return _commentStyleDlg.getHSelf();
-    };
+    }
     HWND getSymbolHandle() const {
         return _symbolsStyleDlg.getHSelf();
-    };
+    }
     void setTabName(int index, const wchar_t *name2set) {
         _ctrlTab.renameTab(index, name2set);
-    };
+    }
 protected :
     intptr_t CALLBACK run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam) override;
 private :
     ControlsTab _ctrlTab;
     WindowVector _wVector;
-    UserLangContainer *_pCurrentUserLang = nullptr;
+	std::unique_ptr<UserLangContainer> _pCurrentUserLang = nullptr;
     FolderStyleDialog       _folderStyleDlg;
     KeyWordsStyleDialog     _keyWordsStyleDlg;
     CommentStyleDialog      _commentStyleDlg;
@@ -369,15 +375,18 @@ private :
     int _currentHight = 0;
     int _yScrollPos = 0;
     int _prevHightVal = 0;
+
+	using Window::init;
+
     void getActualPosSize() {
         ::GetWindowRect(_hSelf, &_dlgPos);
         _dlgPos.right -= _dlgPos.left;
         _dlgPos.bottom -= _dlgPos.top;
-    };
-    void restorePosSize(){reSizeTo(_dlgPos);};
+    }
+    void restorePosSize(){ reSizeTo(_dlgPos); }
     void enableLangAndControlsBy(size_t index);
 protected :
-    void setKeywords2List(int) override {};
+    void setKeywords2List(int) override {}
     void updateDlg() override;
 };
 
@@ -396,19 +405,19 @@ public :
 		{
 			_restrictedChars = restrictedChars;
 		}
-	};
+	}
 
     intptr_t doDialog() {
-        return ::DialogBoxParam(_hInst, MAKEINTRESOURCE(IDD_STRING_DLG), _hParent,  dlgProc, reinterpret_cast<LPARAM>(this));
-    };
+        return StaticDialog::myCreateDialogBoxIndirectParam(IDD_STRING_DLG, false);
+    }
 
-    void destroy() override {};
+    void destroy() override {}
 	
 protected :
     intptr_t CALLBACK run_dlgProc(UINT Message, WPARAM wParam, LPARAM) override;
 
 	// Custom proc to subclass edit control
-	LRESULT static CALLBACK customEditProc(HWND hEdit, UINT msg, WPARAM wParam, LPARAM lParam);
+	static LRESULT CALLBACK CustomEditProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
 
 	bool isAllowed(const std::wstring& txt);
 	void HandlePaste(HWND hEdit);
@@ -420,40 +429,42 @@ private :
 	std::wstring _restrictedChars;
     int _txtLen = 0;
 	bool _shouldGotoCenter = false;
-	WNDPROC _oldEditProc = nullptr;
+
+	using Window::init;
 };
 
-class StylerDlg
+class StylerDlg : public StaticDialog
 {
 public:
-    StylerDlg( HINSTANCE hInst, HWND parent, int stylerIndex = 0, int enabledNesters = -1):
-        _hInst(hInst), _parent(parent), _stylerIndex(stylerIndex), _enabledNesters(enabledNesters) {
-        _pFgColour = new ColourPicker;
-        _pBgColour = new ColourPicker;
-        _initialStyle = SharedParametersDialog::_pUserLang->_styles.getStyler(stylerIndex);
-    };
+	StylerDlg(HINSTANCE hInst, HWND parent, int stylerIndex = 0, int enabledNesters = -1)
+		: _stylerIndex(stylerIndex), _enabledNesters(enabledNesters)
+		, _pFgColour(std::make_unique<ColourPicker>()), _pBgColour(std::make_unique<ColourPicker>())
+		, _initialStyle(SharedParametersDialog::_pUserLang->_styles.getStyler(stylerIndex)) {
+		Window::init(hInst, parent);
+	}
 
-    ~StylerDlg() {
+    ~StylerDlg() override {
         _pFgColour->destroy();
         _pBgColour->destroy();
-        delete _pFgColour;
-        delete _pBgColour;
-	};
+    }
 
-    long doDialog() {
-		return long(::DialogBoxParam(_hInst, MAKEINTRESOURCE(IDD_STYLER_POPUP_DLG), _parent, dlgProc, reinterpret_cast<LPARAM>(this)));
-    };
+    void destroy() override {}
 
-    static intptr_t CALLBACK dlgProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
+    int doDialog() {
+        return static_cast<int>(StaticDialog::myCreateDialogBoxIndirectParam(IDD_STYLER_POPUP_DLG, false));
+    }
+
+protected:
+    intptr_t CALLBACK run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam) override;
 
 private:
-    HINSTANCE _hInst = nullptr;
-    HWND _parent = nullptr;
     int _stylerIndex = 0;
     int _enabledNesters = 0;
-    ColourPicker * _pFgColour = nullptr;
-    ColourPicker * _pBgColour = nullptr;
+	std::unique_ptr<ColourPicker> _pFgColour = nullptr;
+	std::unique_ptr<ColourPicker> _pBgColour = nullptr;
     Style _initialStyle;
 
-    void move2CtrlRight(HWND hwndDlg, int ctrlID, HWND handle2Move, int handle2MoveWidth, int handle2MoveHeight);
+	using Window::init;
+
+	static void move2CtrlRight(HWND hwndDlg, int ctrlID, HWND handle2Move, int handle2MoveWidth, int handle2MoveHeight);
 };

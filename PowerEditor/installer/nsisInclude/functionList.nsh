@@ -38,6 +38,11 @@ SectionGroup "Function List Files" functionListComponent
 		File ".\functionList\cs.xml"
 	${MementoSectionEnd}
 
+	${MementoSection} "CSS" CSS_FL
+		SetOutPath "$INSTDIR\functionList"
+		File ".\functionList\css.xml"
+	${MementoSectionEnd}
+
 	${MementoSection} "Assembly" Assembly_FL
 		SetOutPath "$INSTDIR\functionList"
 		File ".\functionList\asm.xml"
@@ -58,7 +63,7 @@ SectionGroup "Function List Files" functionListComponent
 		File ".\functionList\php.xml"
 	${MementoSectionEnd}
 
-	${MementoSection} "COBOL section free" COBOL-section-free
+	${MementoSection} "COBOL section free" COBOL-section-free_FL
 		SetOutPath "$INSTDIR\functionList"
 		File ".\functionList\cobol-free.xml"
 	${MementoSectionEnd}
@@ -218,9 +223,29 @@ SectionGroup "Function List Files" functionListComponent
 		File ".\functionList\latex.xml"
 	${MementoSectionEnd}
 
+	${MementoSection} "VisualBasic" VB_FL
+		SetOutPath "$INSTDIR\functionList"
+		File ".\functionList\vb.xml"
+	${MementoSectionEnd}
+
 	${MementoSection} "NppExecScript" NppExecScript_FL
 		SetOutPath "$INSTDIR\functionList"
 		File ".\functionList\nppexec.xml"
+	${MementoSectionEnd}
+
+	${MementoSection} "SAS" SAS_FL
+		SetOutPath "$INSTDIR\functionList"
+		File ".\functionList\sas.xml"
+	${MementoSectionEnd}
+
+	${MementoSection} "makefile" MAKEFILE_FL
+		SetOutPath "$INSTDIR\functionList"
+		File ".\functionList\makefile.xml"
+	${MementoSectionEnd}
+
+	${MementoSection} "Nim" NIM_FL
+		SetOutPath "$INSTDIR\functionList"
+		File ".\functionList\nim.xml"
 	${MementoSectionEnd}
 
 	SetOverwrite off
@@ -271,6 +296,10 @@ SectionGroup un.functionListComponent
 
 	Section un.C#_FL
 		Delete "$INSTDIR\functionList\cs.xml"
+	SectionEnd
+
+	Section un.CSS_FL
+		Delete "$INSTDIR\functionList\css.xml"
 	SectionEnd
 
 	Section un.JavaScript_FL
@@ -397,8 +426,24 @@ SectionGroup un.functionListComponent
 		Delete "$INSTDIR\functionList\latex.xml"
 	SectionEnd
 
+	Section un.VB_FL
+		Delete "$INSTDIR\functionList\vb.xml"
+	SectionEnd
+
 	Section un.NppExecScript_FL
 		Delete "$INSTDIR\functionList\nppexec.xml"
+	SectionEnd
+
+	Section un.SAS_FL
+		Delete "$INSTDIR\functionList\sas.xml"
+	SectionEnd
+
+	Section un.MAKEFILE_FL
+		Delete "$INSTDIR\functionList\makefile.xml"
+	SectionEnd
+
+	Section un.NIM_FL
+		Delete "$INSTDIR\functionList\nim.xml"
 	SectionEnd
 
 SectionGroupEnd

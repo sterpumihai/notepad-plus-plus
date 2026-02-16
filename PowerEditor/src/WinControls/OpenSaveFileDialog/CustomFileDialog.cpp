@@ -16,7 +16,6 @@
 
 
 #include <shobjidl.h>
-#include <shlwapi.h>	// PathIsDirectory
 #ifdef __MINGW32__
 #include <cwchar>
 #endif
@@ -98,27 +97,6 @@ namespace // anonymous
 		return name.find_last_of('.') != wstring::npos;
 	}
 
-	void expandEnv(wstring& s)
-	{
-		wchar_t buffer[MAX_PATH] = { '\0' };
-		// This returns the resulting string length or 0 in case of error.
-		DWORD ret = ExpandEnvironmentStrings(s.c_str(), buffer, static_cast<DWORD>(std::size(buffer)));
-		if (ret != 0)
-		{
-			if (ret == static_cast<DWORD>(lstrlen(buffer) + 1))
-			{
-				s = buffer;
-			}
-			else
-			{
-				// Buffer was too small, try with a bigger buffer of the required size.
-				std::vector<wchar_t> buffer2(ret, 0);
-				ret = ExpandEnvironmentStrings(s.c_str(), buffer2.data(), static_cast<DWORD>(buffer2.size()));
-				assert(ret == static_cast<DWORD>(lstrlen(buffer2.data()) + 1));
-				s = buffer2.data();
-			}
-		}
-	}
 
 	wstring getFilename(IShellItem* psi)
 	{
@@ -142,13 +120,14 @@ namespace // anonymous
 		HRESULT hr = SHCreateItemFromParsingName(path,
 			nullptr,
 			IID_PPV_ARGS(&shellItem));
-		if (SUCCEEDED(hr) && shellItem && !::PathIsDirectory(path))
+		if (SUCCEEDED(hr) && shellItem && !::doesDirectoryExist(path))
 		{
 			com_ptr<IShellItem> parentItem;
 			hr = shellItem->GetParent(&parentItem);
 			if (SUCCEEDED(hr))
 				shellItem = parentItem;
 		}
+
 		if (SUCCEEDED(hr))
 			hr = dialog->SetFolder(shellItem);
 		return SUCCEEDED(hr);
@@ -422,6 +401,7 @@ private:
 					}
 				}
 			}
+
 			if (_hwndNameEdit)
 				s_handleMap[_hwndNameEdit] = this;
 		}
@@ -506,7 +486,7 @@ private:
 		expandEnv(fileName);
 		bool nameChanged = transformPath(fileName);
 		// Update the controls.
-		if (!::PathIsDirectory(getAbsPath(fileName).c_str()))
+		if (!doesDirectoryExist(getAbsPath(fileName).c_str()))
 		{
 			// Name is a file path.
 			// Add file extension if missing.
@@ -1038,7 +1018,7 @@ void CustomFileDialog::setSaveAsCopy(bool isSavingAsCopy)
 	}
 }
 
-bool CustomFileDialog::getOpenTheCopyAfterSaveAsCopy(void)
+bool CustomFileDialog::getOpenTheCopyAfterSaveAsCopy()
 {
 	return (_impl->_savingAsCopyInfo & SAVE_AS_COPY_OPEN) != 0;
 }
@@ -1076,7 +1056,7 @@ wstring CustomFileDialog::doSaveDlg()
 
 	CurrentDirBackup backup;
 
-	_impl->addFlags(FOS_PATHMUSTEXIST | FOS_FILEMUSTEXIST | FOS_FORCEFILESYSTEM);
+	_impl->addFlags(FOS_PATHMUSTEXIST | FOS_FILEMUSTEXIST | FOS_FORCEFILESYSTEM | FOS_NOTESTFILECREATE);
 	bool bOk = _impl->show();
 	return bOk ? _impl->getResultFilename() : L"";
 }

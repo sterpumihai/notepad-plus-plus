@@ -52,6 +52,7 @@ FunctionEnd
 		System::Call 'kernel32::OpenMutex(i 0x100000, b 0, t "nppInstance") i .R0'
 		
 		IntCmp $R0 0 NotRunning
+			StrCpy $runningNppDetected "true"
 			System::Call 'kernel32::CloseHandle(i $R0)'
 			MessageBox MB_RETRYCANCEL|MB_DEFBUTTON1|MB_ICONSTOP "Cannot continue the installation: Notepad++ is running.\
 			          $\n$\n\
@@ -72,9 +73,11 @@ FunctionEnd
 Var Dialog
 Var NoUserDataCheckboxHandle
 Var ShortcutCheckboxHandle
+Var ShowDetailsCheckboxHandle
 Var WinVer
 Var noUserDataChecked
 Var createShortcutChecked
+Var showDetailsChecked
 
 ; The definition of "OnChange" event for checkbox
 Function OnChange_NoUserDataCheckBox
@@ -83,6 +86,10 @@ FunctionEnd
 
 Function OnChange_ShortcutCheckBox
 	${NSD_GetState} $ShortcutCheckboxHandle $createShortcutChecked
+FunctionEnd
+
+Function OnChange_ShowDetailsCheckbox
+	${NSD_GetState} $ShowDetailsCheckboxHandle $showDetailsChecked
 FunctionEnd
 
 Function ExtraOptions
@@ -98,8 +105,8 @@ Function ExtraOptions
 	StrCmp $WinVer "8" 0 +2
 	${NSD_Check} $ShortcutCheckboxHandle
 	${NSD_OnClick} $ShortcutCheckboxHandle OnChange_ShortcutCheckBox
-	
-	${NSD_CreateCheckbox} 0 120 100% 30u "Don't use %APPDATA%$\nEnable this option to make Notepad++ load/write the configuration files from/to its install directory. Check it if you use Notepad++ in a USB device."
+
+	${NSD_CreateCheckbox} 0 80 100% 30u "Don't use %APPDATA%$\nEnable this option to make Notepad++ load/write the configuration files from/to its install directory. Check it if you use Notepad++ in a USB device."
 	Pop $NoUserDataCheckboxHandle
 	IfFileExists $INSTDIR\doLocalConf.xml doLocalConfExists doLocalConfDoesNotExists
 	doLocalConfExists:
@@ -108,7 +115,11 @@ Function ExtraOptions
 		StrCpy $noUserDataChecked ${BST_CHECKED}
 	doLocalConfDoesNotExists:
 	${NSD_OnClick} $NoUserDataCheckboxHandle OnChange_NoUserDataCheckBox
-	
+
+	${NSD_CreateCheckbox} 0 160 100% 30u "Show installation details"
+	Pop $ShowDetailsCheckboxHandle
+	${NSD_OnClick} $ShowDetailsCheckboxHandle OnChange_ShowDetailsCheckbox
+
 	StrLen $0 $PROGRAMFILES
 	StrCpy $1 $InstDir $0
 
@@ -226,6 +237,7 @@ FunctionEnd
 	IntPtrCmp $0 0 processNotRunning
 	IsWindow $0 0 processNotRunning
 
+	StrCpy $runningNppDetected "true"
 	IfSilent skipDetailPrint 0
 	DetailPrint "Closing the ${RUNPROC_WND_CLASS} app running..."
   skipDetailPrint:

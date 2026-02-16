@@ -13,21 +13,40 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#include <algorithm>
-#include <stdexcept>
-#include <shlwapi.h>
-#include <uxtheme.h>
-#include <cassert>
-#include <codecvt>
-#include <locale>
-#include "StaticDialog.h"
-#include "CustomFileDialog.h"
 
-#include "FileInterface.h"
+
 #include "Common.h"
-#include "Utf8.h"
-#include <Parameters.h>
+
+#include <windows.h>
+
+#include <commctrl.h>
+#include <excpt.h>
+#include <shlwapi.h>
+
+#include <algorithm>
+#include <cassert>
+#include <cerrno>
+#include <climits>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <cwchar>
+#include <exception>
+#include <iterator>
+#include <locale>
+#include <memory>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+#include <vector>
+
 #include "Buffer.h"
+#include "CustomFileDialog.h"
+#include "FileInterface.h"
+#include "NppConstants.h"
+#include "NppDarkMode.h"
+#include "Utf8.h"
+#include "dpiManagerV2.h"
 
 using namespace std;
 
@@ -46,38 +65,66 @@ void printStr(const wchar_t *str2print)
 
 wstring commafyInt(size_t n)
 {
-	std::basic_stringstream<wchar_t> ss;
-	ss.imbue(std::locale(""));
+	static const auto loc = std::locale("");
+	std::wstringstream ss;
+	ss.imbue(loc);
 	ss << n;
 	return ss.str();
 }
 
-std::string getFileContent(const wchar_t *file2read)
+std::string getFileContent(const wchar_t* file2read, bool* pbFailed)
 {
+	if (pbFailed)
+		*pbFailed = false; // reset
+
 	if (!doesFileExist(file2read))
-		return "";
-
-	const size_t blockSize = 1024;
-	char data[blockSize];
-	std::string wholeFileContent = "";
-	FILE *fp = _wfopen(file2read, L"rb");
-	if (!fp)
-		return "";
-
-	size_t lenFile = 0;
-	do
 	{
-		lenFile = fread(data, 1, blockSize, fp);
-		if (lenFile == 0) break;
-		wholeFileContent.append(data, lenFile);
+		if (pbFailed)
+			*pbFailed = true;
+		return "";
 	}
-	while (lenFile > 0);
+
+	FILE* fp = _wfopen(file2read, L"rb");
+	if (!fp)
+	{
+		if (pbFailed)
+			*pbFailed = true;
+		return "";
+	}
+	
+	static constexpr size_t blockSize = 1024 * 4; // 4K is optimal chunk for memory, cache, disk or network
+	char data[blockSize];
+	std::string wholeFileContent;
+	size_t lenFile = 0;
+	try
+	{
+		do
+		{
+			lenFile = fread(data, 1, blockSize, fp);
+			if (lenFile == 0) break;
+			wholeFileContent.append(data, lenFile);
+		} while (lenFile > 0);
+	}
+	catch ([[maybe_unused]] const std::bad_alloc& ex)
+	{
+		if (pbFailed)
+			*pbFailed = true;
+		std::string().swap(wholeFileContent); // to immediately release all the allocated memory
+		::MessageBoxW(NULL, L"std::bad_alloc exception caught!\n\nProbably not enough contiguous memory to complete the operation.",
+			L"Notepad++ - getFileContent", MB_OK | MB_ICONWARNING | MB_APPLMODAL);
+	}
+	catch (...)
+	{
+		if (pbFailed)
+			*pbFailed = true;
+		std::string().swap(wholeFileContent); // to immediately release all the allocated memory
+	}
 
 	fclose(fp);
 	return wholeFileContent;
 }
 
-char getDriveLetter()
+static char getDriveLetter()
 {
 	char drive = '\0';
 	wchar_t current[MAX_PATH];
@@ -85,7 +132,7 @@ char getDriveLetter()
 	::GetCurrentDirectory(MAX_PATH, current);
 	int driveNbr = ::PathGetDriveNumber(current);
 	if (driveNbr != -1)
-		drive = 'A' + char(driveNbr);
+		drive = 'A' + static_cast<char>(driveNbr);
 
 	return drive;
 }
@@ -126,7 +173,7 @@ void writeFileContent(const wchar_t *file2write, const char *content2write)
 }
 
 
-void writeLog(const wchar_t *logFileName, const char *log2write)
+void writeLog(const wchar_t* logFileName, const char* log2write)
 {
 	const DWORD accessParam{ GENERIC_READ | GENERIC_WRITE };
 	const DWORD shareParam{ FILE_SHARE_READ | FILE_SHARE_WRITE };
@@ -143,8 +190,7 @@ void writeLog(const wchar_t *logFileName, const char *log2write)
 		SYSTEMTIME currentTime = {};
 		::GetLocalTime(&currentTime);
 		wstring dateTimeStrW = getDateTimeStrFrom(L"yyyy-MM-dd HH:mm:ss", currentTime);
-		std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
-		std::string log2writeStr = converter.to_bytes(dateTimeStrW);
+		string log2writeStr = wstring2string(dateTimeStrW, CP_UTF8);
 		log2writeStr += "  ";
 		log2writeStr += log2write;
 		log2writeStr += "\n";
@@ -157,6 +203,11 @@ void writeLog(const wchar_t *logFileName, const char *log2write)
 	}
 }
 
+void writeLog(const wchar_t* logFileName, const wchar_t* log2write)
+{
+	string log2WriteA = wstring2string(log2write, CP_ACP);
+	return writeLog(logFileName, log2WriteA.c_str());
+}
 
 wstring folderBrowser(HWND parent, const wstring & title, int outputCtrlID, const wchar_t *defaultStr)
 {
@@ -258,28 +309,28 @@ int filter(unsigned int code, struct _EXCEPTION_POINTERS *)
 }
 
 
-bool isInList(const wchar_t *token, const wchar_t *list)
+bool isInList(const wchar_t* token, const wchar_t* list)
 {
 	if ((!token) || (!list))
 		return false;
 
-	const size_t wordLen = 64;
-	size_t listLen = lstrlen(list);
+	static constexpr size_t wordLen = 64;
+	const size_t listLen = std::wcslen(list);
 
-	wchar_t word[wordLen] = { '\0' };
+	wchar_t word[wordLen] = { L'\0' };
 	size_t i = 0;
 	size_t j = 0;
 
 	for (; i <= listLen; ++i)
 	{
-		if ((list[i] == ' ')||(list[i] == '\0'))
+		if ((list[i] == L' ') || (list[i] == L'\0'))
 		{
 			if (j != 0)
 			{
 				word[j] = '\0';
 				j = 0;
 
-				if (!wcsicmp(token, word))
+				if (!::_wcsicmp(token, word))
 					return true;
 			}
 		}
@@ -298,7 +349,7 @@ bool isInList(const wchar_t *token, const wchar_t *list)
 
 wstring purgeMenuItemString(const wchar_t * menuItemStr, bool keepAmpersand)
 {
-	const size_t cleanedNameLen = 64;
+	static constexpr size_t cleanedNameLen = 64;
 	wchar_t cleanedName[cleanedNameLen] = L"";
 	size_t j = 0;
 	size_t menuNameLen = lstrlen(menuItemStr);
@@ -330,7 +381,7 @@ wstring purgeMenuItemString(const wchar_t * menuItemStr, bool keepAmpersand)
 }
 
 
-const wchar_t * WcharMbcsConvertor::char2wchar(const char * mbcs2Convert, size_t codepage, int lenMbcs, int* pLenWc, int* pBytesNotProcessed)
+const wchar_t* WcharMbcsConvertor::char2wchar(const char* mbcs2Convert, size_t codepage, int lenMbcs, int* pLenWc, int* pBytesNotProcessed)
 {
 	// Do not process NULL pointer
 	if (!mbcs2Convert)
@@ -353,22 +404,22 @@ const wchar_t * WcharMbcsConvertor::char2wchar(const char * mbcs2Convert, size_t
 		lenWc = MultiByteToWideChar(cp, 0, mbcs2Convert, lenMbcs, NULL, 0);
 	}
 	// Otherwise, test if we are cutting a multi-byte character at end of buffer
-	else if (lenMbcs != -1 && cp == CP_UTF8) // For UTF-8, we know how to test it
+	else if (cp == CP_UTF8) // For UTF-8, we know how to test it
 	{
-		int indexOfLastChar = Utf8::characterStart(mbcs2Convert, lenMbcs-1); // get index of last character
-		if (indexOfLastChar != 0 && !Utf8::isValid(mbcs2Convert+indexOfLastChar, lenMbcs-indexOfLastChar)) // if it is not valid we do not process it right now (unless its the only character in string, to ensure that we always progress, e.g. that bytesNotProcessed < lenMbcs)
+		int indexOfLastChar = Utf8::characterStart(mbcs2Convert, lenMbcs - 1); // get index of last character
+		if (indexOfLastChar != 0 && !Utf8::isValid(mbcs2Convert + indexOfLastChar, lenMbcs - indexOfLastChar)) // if it is not valid we do not process it right now (unless its the only character in string, to ensure that we always progress, e.g. that bytesNotProcessed < lenMbcs)
 		{
-			bytesNotProcessed = lenMbcs-indexOfLastChar;
+			bytesNotProcessed = lenMbcs - indexOfLastChar;
 		}
-		lenWc = MultiByteToWideChar(cp, 0, mbcs2Convert, lenMbcs-bytesNotProcessed, NULL, 0);
+		lenWc = MultiByteToWideChar(cp, 0, mbcs2Convert, lenMbcs - bytesNotProcessed, NULL, 0);
 	}
 	else // For other encodings, ask system if there are any invalid characters; note that it will not correctly know if last character is cut when there are invalid characters inside the text
 	{
-		lenWc = MultiByteToWideChar(cp, (lenMbcs == -1) ? 0 : MB_ERR_INVALID_CHARS, mbcs2Convert, lenMbcs, NULL, 0);
+		lenWc = MultiByteToWideChar(cp, MB_ERR_INVALID_CHARS, mbcs2Convert, lenMbcs, NULL, 0);
 		if (lenWc == 0 && GetLastError() == ERROR_NO_UNICODE_TRANSLATION)
 		{
 			// Test without last byte
-			if (lenMbcs > 1) lenWc = MultiByteToWideChar(cp, MB_ERR_INVALID_CHARS, mbcs2Convert, lenMbcs-1, NULL, 0);
+			if (lenMbcs > 1) lenWc = MultiByteToWideChar(cp, MB_ERR_INVALID_CHARS, mbcs2Convert, lenMbcs - 1, NULL, 0);
 			if (lenWc == 0) // don't have to check that the error is still ERROR_NO_UNICODE_TRANSLATION, since only the length parameter changed
 			{
 				// TODO: should warn user about incorrect loading due to invalid characters
@@ -381,12 +432,20 @@ const wchar_t * WcharMbcsConvertor::char2wchar(const char * mbcs2Convert, size_t
 				bytesNotProcessed = 1;
 			}
 		}
+		else if (lenWc == 0)
+		{
+			lenWc = MultiByteToWideChar(cp, 0, mbcs2Convert, lenMbcs, NULL, 0);
+		}
 	}
 
 	if (lenWc > 0)
 	{
 		_wideCharStr.sizeTo(lenWc);
-		MultiByteToWideChar(cp, 0, mbcs2Convert, lenMbcs-bytesNotProcessed, _wideCharStr, lenWc);
+		MultiByteToWideChar(cp, 0, mbcs2Convert, lenMbcs - bytesNotProcessed, _wideCharStr, lenWc);
+		if (lenMbcs == -1)
+			_wideCharStr[lenWc - 1] = '\0';
+		else
+			_wideCharStr[lenWc] = '\0';
 	}
 	else
 		_wideCharStr.empty();
@@ -402,22 +461,37 @@ const wchar_t * WcharMbcsConvertor::char2wchar(const char * mbcs2Convert, size_t
 
 // "mstart" and "mend" are pointers to indexes in mbcs2Convert,
 // which are converted to the corresponding indexes in the returned wchar_t string.
-const wchar_t * WcharMbcsConvertor::char2wchar(const char * mbcs2Convert, size_t codepage, intptr_t* mstart, intptr_t* mend)
+const wchar_t* WcharMbcsConvertor::char2wchar(const char* mbcs2Convert, size_t codepage, intptr_t* mstart, intptr_t* mend, int mbcsLen)
 {
 	// Do not process NULL pointer
 	if (!mbcs2Convert) return NULL;
+
+	if (mbcsLen == 0 || (mbcsLen == -1 && mbcs2Convert[0] == 0))
+	{
+		_wideCharStr.empty();
+		*mstart = 0;
+		*mend = 0;
+		return _wideCharStr;
+	}
+
 	UINT cp = static_cast<UINT>(codepage);
-	int len = MultiByteToWideChar(cp, 0, mbcs2Convert, -1, NULL, 0);
+	int len = MultiByteToWideChar(cp, 0, mbcs2Convert, mbcsLen ? mbcsLen : -1, NULL, 0);
+
 	if (len > 0)
 	{
 		_wideCharStr.sizeTo(len);
-		len = MultiByteToWideChar(cp, 0, mbcs2Convert, -1, _wideCharStr, len);
+		len = MultiByteToWideChar(cp, 0, mbcs2Convert, mbcsLen ? mbcsLen : -1, _wideCharStr, len);
+		if (mbcsLen == -1) // added
+			_wideCharStr[len - 1] = '\0';
+		else
+			_wideCharStr[len] = '\0';
 
-		if ((size_t)*mstart < strlen(mbcs2Convert) && (size_t)*mend <= strlen(mbcs2Convert))
+		const intptr_t mbcsLen2 = mbcsLen ? mbcsLen : static_cast<intptr_t>(std::strlen(mbcs2Convert));
+		if (*mstart < mbcsLen2 && *mend <= mbcsLen2)
 		{
 			*mstart = MultiByteToWideChar(cp, 0, mbcs2Convert, static_cast<int>(*mstart), _wideCharStr, 0);
-			*mend   = MultiByteToWideChar(cp, 0, mbcs2Convert, static_cast<int>(*mend), _wideCharStr, 0);
-			if (*mstart >= len || *mend >= len)
+			*mend = MultiByteToWideChar(cp, 0, mbcs2Convert, static_cast<int>(*mend), _wideCharStr, 0);
+			if (*mstart >= len || *mend > len)
 			{
 				*mstart = 0;
 				*mend = 0;
@@ -434,10 +508,16 @@ const wchar_t * WcharMbcsConvertor::char2wchar(const char * mbcs2Convert, size_t
 }
 
 
-const char* WcharMbcsConvertor::wchar2char(const wchar_t * wcharStr2Convert, size_t codepage, int lenWc, int* pLenMbcs)
+const char* WcharMbcsConvertor::wchar2char(const wchar_t* wcharStr2Convert, size_t codepage, int lenWc, int* pLenMbcs)
 {
 	if (!wcharStr2Convert)
 		return nullptr;
+
+	if (lenWc == 0 || (lenWc == -1 && wcharStr2Convert[0] == 0))
+	{
+		_multiByteStr.empty();
+		return _multiByteStr;
+	}
 
 	UINT cp = static_cast<UINT>(codepage);
 	int lenMbcs = WideCharToMultiByte(cp, 0, wcharStr2Convert, lenWc, NULL, 0, NULL, NULL);
@@ -445,6 +525,10 @@ const char* WcharMbcsConvertor::wchar2char(const wchar_t * wcharStr2Convert, siz
 	{
 		_multiByteStr.sizeTo(lenMbcs);
 		WideCharToMultiByte(cp, 0, wcharStr2Convert, lenWc, _multiByteStr, lenMbcs, NULL, NULL);
+		if (lenWc == -1)
+			_multiByteStr[lenMbcs - 1] = '\0';
+		else
+			_multiByteStr[lenMbcs] = '\0';
 	}
 	else
 		_multiByteStr.empty();
@@ -455,23 +539,38 @@ const char* WcharMbcsConvertor::wchar2char(const wchar_t * wcharStr2Convert, siz
 }
 
 
-const char * WcharMbcsConvertor::wchar2char(const wchar_t * wcharStr2Convert, size_t codepage, intptr_t* mstart, intptr_t* mend)
+const char* WcharMbcsConvertor::wchar2char(const wchar_t* wcharStr2Convert, size_t codepage, intptr_t* mstart, intptr_t* mend, int wcharLenIn, int* lenOut)
 {
 	if (!wcharStr2Convert)
 		return nullptr;
 
+	if (wcharLenIn == 0 || (wcharLenIn == -1 && wcharStr2Convert[0] == 0))
+	{
+		_multiByteStr.empty();
+		*mstart = 0;
+		*mend = 0;
+		return _multiByteStr;
+	}
+
 	UINT cp = static_cast<UINT>(codepage);
-	int len = WideCharToMultiByte(cp, 0, wcharStr2Convert, -1, NULL, 0, NULL, NULL);
+
+	int len = WideCharToMultiByte(cp, 0, wcharStr2Convert, wcharLenIn ? wcharLenIn : -1, NULL, 0, NULL, NULL);
+
 	if (len > 0)
 	{
 		_multiByteStr.sizeTo(len);
-		len = WideCharToMultiByte(cp, 0, wcharStr2Convert, -1, _multiByteStr, len, NULL, NULL); // not needed?
+		len = WideCharToMultiByte(cp, 0, wcharStr2Convert, wcharLenIn ? wcharLenIn : -1, _multiByteStr, len, NULL, NULL);
+		if (wcharLenIn == -1)
+			_multiByteStr[len - 1] = '\0';
+		else
+			_multiByteStr[len] = '\0';
 
-        if (*mstart < lstrlenW(wcharStr2Convert) && *mend < lstrlenW(wcharStr2Convert))
-        {
-			*mstart = WideCharToMultiByte(cp, 0, wcharStr2Convert, (int)*mstart, NULL, 0, NULL, NULL);
-			*mend = WideCharToMultiByte(cp, 0, wcharStr2Convert, (int)*mend, NULL, 0, NULL, NULL);
-			if (*mstart >= len || *mend >= len)
+		const intptr_t wcharLenIn2 = wcharLenIn ? wcharLenIn : static_cast<intptr_t>(std::wcslen(wcharStr2Convert));
+		if (*mstart < wcharLenIn2 && *mend < wcharLenIn2)
+		{
+			*mstart = ::WideCharToMultiByte(cp, 0, wcharStr2Convert, static_cast<int>(*mstart), nullptr, 0, nullptr, nullptr);
+			*mend = ::WideCharToMultiByte(cp, 0, wcharStr2Convert, static_cast<int>(*mend), nullptr, 0, nullptr, nullptr);
+			if (*mstart >= len || *mend > len)
 			{
 				*mstart = 0;
 				*mend = 0;
@@ -479,35 +578,42 @@ const char * WcharMbcsConvertor::wchar2char(const wchar_t * wcharStr2Convert, si
 		}
 	}
 	else
+	{
 		_multiByteStr.empty();
+		*mstart = 0;
+		*mend = 0;
+	}
 
+	if (lenOut)
+		*lenOut = len;
 	return _multiByteStr;
 }
 
 
-std::wstring string2wstring(const std::string & rString, UINT codepage)
+std::wstring string2wstring(const std::string& rString, UINT codepage)
 {
-	int len = MultiByteToWideChar(codepage, 0, rString.c_str(), -1, NULL, 0);
+	// includes null terminator
+	const int len = ::MultiByteToWideChar(codepage, 0, rString.c_str(), -1, nullptr, 0);
 	if (len > 0)
 	{
-		std::vector<wchar_t> vw(len);
-		MultiByteToWideChar(codepage, 0, rString.c_str(), -1, &vw[0], len);
-		return &vw[0];
+		std::wstring str(len - 1, L'\0');
+		::MultiByteToWideChar(codepage, 0, rString.c_str(), -1, str.data(), len);
+		return str;
 	}
-	return std::wstring();
+	return L"";
 }
 
-
-std::string wstring2string(const std::wstring & rwString, UINT codepage)
+std::string wstring2string(const std::wstring& rwString, UINT codepage)
 {
-	int len = WideCharToMultiByte(codepage, 0, rwString.c_str(), -1, NULL, 0, NULL, NULL);
+	// includes null terminator
+	const int len = ::WideCharToMultiByte(codepage, 0, rwString.c_str(), -1, nullptr, 0, nullptr, nullptr);
 	if (len > 0)
 	{
-		std::vector<char> vw(len);
-		WideCharToMultiByte(codepage, 0, rwString.c_str(), -1, &vw[0], len, NULL, NULL);
-		return &vw[0];
+		std::string str(len - 1, '\0');
+		::WideCharToMultiByte(codepage, 0, rwString.c_str(), -1, str.data(), len, nullptr, nullptr);
+		return str;
 	}
-	return std::string();
+	return "";
 }
 
 
@@ -625,7 +731,7 @@ wstring BuildMenuFileName(int filenameLen, unsigned int pos, const wstring &file
 }
 
 
-wstring PathRemoveFileSpec(wstring& path)
+wstring pathRemoveFileSpec(wstring& path)
 {
     wstring::size_type lastBackslash = path.find_last_of(L'\\');
     if (lastBackslash == wstring::npos)
@@ -723,18 +829,20 @@ COLORREF getCtrlBgColor(HWND hWnd)
 }
 
 
-wstring stringToUpper(wstring strToConvert)
+std::wstring stringToUpper(std::wstring strToConvert)
 {
-    std::transform(strToConvert.begin(), strToConvert.end(), strToConvert.begin(), 
-        [](wchar_t ch){ return static_cast<wchar_t>(towupper(ch)); }
-    );
-    return strToConvert;
+	static const auto loc = std::locale("");
+	std::transform(strToConvert.begin(), strToConvert.end(), strToConvert.begin(),
+		[](auto ch) { return std::toupper(ch, loc); });
+	return strToConvert;
 }
 
-wstring stringToLower(wstring strToConvert)
+std::wstring stringToLower(std::wstring strToConvert)
 {
-    std::transform(strToConvert.begin(), strToConvert.end(), strToConvert.begin(), ::towlower);
-    return strToConvert;
+	static const auto loc = std::locale("");
+	std::transform(strToConvert.begin(), strToConvert.end(), strToConvert.begin(),
+		[](auto ch) { return std::tolower(ch, loc); });
+	return strToConvert;
 }
 
 
@@ -844,7 +952,7 @@ double stodLocale(const wstring& str, [[maybe_unused]] _locale_t loc, size_t* id
 	if (errno == ERANGE)
 		throw std::out_of_range("stod argument out of range");
 	if (idx != NULL)
-		*idx = (size_t)(eptr - ptr);
+		*idx = static_cast<size_t>(eptr - ptr);
 	return ans;
 }
 
@@ -857,25 +965,29 @@ bool str2Clipboard(const wstring &str2cpy, HWND hwnd)
 	{
 		return false;
 	}
+
 	if (!::OpenClipboard(hwnd))
 	{
 		::GlobalFree(hglbCopy);
 		return false;
 	}
+
 	if (!::EmptyClipboard())
 	{
 		::GlobalFree(hglbCopy);
 		::CloseClipboard();
 		return false;
 	}
+
 	// Lock the handle and copy the text to the buffer.
-	wchar_t *pStr = (wchar_t *)::GlobalLock(hglbCopy);
+	auto* pStr = static_cast<wchar_t*>(::GlobalLock(hglbCopy));
 	if (!pStr)
 	{
 		::GlobalFree(hglbCopy);
 		::CloseClipboard();
 		return false;
 	}
+
 	wcscpy_s(pStr, len2Allocate / sizeof(wchar_t), str2cpy.c_str());
 	::GlobalUnlock(hglbCopy);
 	// Place the handle on the clipboard.
@@ -886,11 +998,75 @@ bool str2Clipboard(const wstring &str2cpy, HWND hwnd)
 		::CloseClipboard();
 		return false;
 	}
+
 	if (!::CloseClipboard())
 	{
 		return false;
 	}
 	return true;
+}
+
+std::wstring strFromClipboard()
+{
+	std::wstring clipboardText;
+	if (::OpenClipboard(NULL))
+	{
+		if (::IsClipboardFormatAvailable(CF_UNICODETEXT))
+		{
+			HANDLE hClipboardData = ::GetClipboardData(CF_UNICODETEXT);
+			if (hClipboardData)
+			{
+				wchar_t* pWc = static_cast<wchar_t*>(::GlobalLock(hClipboardData));
+				if (pWc)
+				{
+					clipboardText = pWc;
+					::GlobalUnlock(hClipboardData);
+				}
+			}
+		}
+		::CloseClipboard();
+	}
+
+	// trim the EOL at the end of string if any
+	// 1: X, \r, \n  => don't change
+	if (clipboardText.length() < 2)
+		return clipboardText;
+
+	// 2: XX, \nX, \rX, X\r, X\n, \r\n, \r\r, \n\n, \n\r
+	if (clipboardText.length() == 2)
+	{
+		if (clipboardText[1] != '\r' && clipboardText[1] != '\n') // XX, \nX, \rX  => don't change 
+			return clipboardText;
+
+		if (clipboardText[0] == '\r' && clipboardText[1] == '\n') // \r\n  => don't change
+			return clipboardText;
+
+		if (clipboardText[0] == '\r' && clipboardText[1] == '\r') // \r\r  => don't change
+			return clipboardText;
+
+		if (clipboardText[0] == '\n' && clipboardText[1] == '\n') // \n\n  => don't change
+			return clipboardText;
+
+		if (clipboardText[0] != '\r' && clipboardText[0] != '\n') // X\n, X\r  => remove \n or \r
+		{
+			wchar_t trimedResult[2]{};
+			trimedResult[0] = clipboardText[0];
+			trimedResult[1] = '\0';
+			return trimedResult;
+		}
+
+		return clipboardText; // \n\r (unlikely happen, but if it does, keep them)
+	}
+	else // length >= 3    => Remove the EOL at the end of string
+	{
+		size_t posEol = clipboardText.length() - 2;
+		if (clipboardText.substr(posEol) == L"\r\n")
+			clipboardText.erase(posEol, 2);
+		else if (clipboardText.substr(posEol + 1) == L"\r" || clipboardText.substr(posEol + 1) == L"\n")
+			clipboardText.erase(posEol + 1, 1);
+	}
+
+	return clipboardText;
 }
 
 bool buf2Clipboard(const std::vector<Buffer*>& buffers, bool isFullPath, HWND hwnd)
@@ -905,9 +1081,11 @@ bool buf2Clipboard(const std::vector<Buffer*>& buffers, bool isFullPath, HWND hw
 			if (fileName)
 				selection += fileName;
 		}
+
 		if (!selection.empty() && !selection.ends_with(crlf))
 			selection += crlf;
 	}
+
 	if (!selection.empty())
 		return str2Clipboard(selection, hwnd);
 	return false;
@@ -979,7 +1157,7 @@ wstring GetLastErrorAsString(DWORD errorCode)
 
 	LPWSTR messageBuffer = nullptr;
 	FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-		nullptr, errorCode, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPWSTR)&messageBuffer, 0, nullptr);
+		nullptr, errorCode, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), reinterpret_cast<LPWSTR>(&messageBuffer), 0, nullptr);
 
 	errorMsg += messageBuffer;
 
@@ -989,7 +1167,7 @@ wstring GetLastErrorAsString(DWORD errorCode)
 	return errorMsg;
 }
 
-HWND CreateToolTip(int toolID, HWND hDlg, HINSTANCE hInst, const PTSTR pszText, bool isRTL)
+HWND CreateToolTip(int toolID, HWND hDlg, HINSTANCE hInst, const PWSTR pszText, bool isRTL)
 {
 	if (!toolID || !hDlg || !pszText)
 	{
@@ -1023,9 +1201,9 @@ HWND CreateToolTip(int toolID, HWND hDlg, HINSTANCE hInst, const PTSTR pszText, 
 	toolInfo.cbSize = sizeof(toolInfo);
 	toolInfo.hwnd = hDlg;
 	toolInfo.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
-	toolInfo.uId = (UINT_PTR)hwndTool;
+	toolInfo.uId = reinterpret_cast<UINT_PTR>(hwndTool);
 	toolInfo.lpszText = pszText;
-	if (!SendMessage(hwndTip, TTM_ADDTOOL, 0, (LPARAM)&toolInfo))
+	if (!SendMessage(hwndTip, TTM_ADDTOOL, 0, reinterpret_cast<LPARAM>(&toolInfo)))
 	{
 		DestroyWindow(hwndTip);
 		return NULL;
@@ -1039,7 +1217,7 @@ HWND CreateToolTip(int toolID, HWND hDlg, HINSTANCE hInst, const PTSTR pszText, 
 	return hwndTip;
 }
 
-HWND CreateToolTipRect(int toolID, HWND hWnd, HINSTANCE hInst, const PTSTR pszText, const RECT rc)
+HWND CreateToolTipRect(int toolID, HWND hWnd, HINSTANCE hInst, const PWSTR pszText, const RECT rc)
 {
 	if (!toolID || !hWnd || !pszText)
 	{
@@ -1067,7 +1245,7 @@ HWND CreateToolTipRect(int toolID, HWND hWnd, HINSTANCE hInst, const PTSTR pszTe
 	toolInfo.uId = toolID;
 	toolInfo.lpszText = pszText;
 	toolInfo.rect = rc;
-	if (!SendMessage(hwndTip, TTM_ADDTOOL, 0, (LPARAM)&toolInfo))
+	if (!SendMessage(hwndTip, TTM_ADDTOOL, 0, reinterpret_cast<LPARAM>(&toolInfo)))
 	{
 		DestroyWindow(hwndTip);
 		return NULL;
@@ -1094,7 +1272,7 @@ bool isCertificateValidated(const wstring & fullFilePath, const wstring & subjec
 	PCMSG_SIGNER_INFO pSignerInfo = NULL;
 	DWORD dwSignerInfo = 0;
 	CERT_INFO CertInfo{};
-	LPTSTR szName = NULL;
+	LPWSTR szName = NULL;
 
 	try {
 		// Get message handle and store handle from the signed file.
@@ -1127,7 +1305,7 @@ bool isCertificateValidated(const wstring & fullFilePath, const wstring & subjec
 		}
 
 		// Allocate memory for signer information.
-		pSignerInfo = (PCMSG_SIGNER_INFO)LocalAlloc(LPTR, dwSignerInfo);
+		pSignerInfo = static_cast<PCMSG_SIGNER_INFO>(::LocalAlloc(LPTR, dwSignerInfo));
 		if (!pSignerInfo)
 		{
 			wstring errorMessage = L"CryptMsgGetParam memory allocation problem: ";
@@ -1136,7 +1314,7 @@ bool isCertificateValidated(const wstring & fullFilePath, const wstring & subjec
 		}
 
 		// Get Signer Information.
-		result = CryptMsgGetParam(hMsg, CMSG_SIGNER_INFO_PARAM, 0, (PVOID)pSignerInfo, &dwSignerInfo);
+		result = ::CryptMsgGetParam(hMsg, CMSG_SIGNER_INFO_PARAM, 0, pSignerInfo, &dwSignerInfo);
 		if (!result)
 		{
 			wstring errorMessage = L"CryptMsgGetParam: ";
@@ -1149,7 +1327,7 @@ bool isCertificateValidated(const wstring & fullFilePath, const wstring & subjec
 		CertInfo.Issuer = pSignerInfo->Issuer;
 		CertInfo.SerialNumber = pSignerInfo->SerialNumber;
 
-		pCertContext = CertFindCertificateInStore(hStore, X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, 0, CERT_FIND_SUBJECT_CERT, (PVOID)&CertInfo, NULL);
+		pCertContext = ::CertFindCertificateInStore(hStore, X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, 0, CERT_FIND_SUBJECT_CERT, &CertInfo, nullptr);
 		if (!pCertContext)
 		{
 			wstring errorMessage = L"Certificate context: ";
@@ -1167,7 +1345,7 @@ bool isCertificateValidated(const wstring & fullFilePath, const wstring & subjec
 		}
 
 		// Allocate memory for subject name.
-		szName = (LPTSTR)LocalAlloc(LPTR, dwData * sizeof(wchar_t));
+		szName = static_cast<LPWSTR>(::LocalAlloc(LPTR, dwData * sizeof(wchar_t)));
 		if (!szName)
 		{
 			throw wstring(L"Certificate checking error: memory allocation problem.");
@@ -1196,7 +1374,7 @@ bool isCertificateValidated(const wstring & fullFilePath, const wstring & subjec
 	catch (...)
 	{
 		// Unknown error
-		wstring errorMessage = L"Unknown exception occured. ";
+		wstring errorMessage = L"Unknown exception occurred. ";
 		errorMessage += GetLastErrorAsString(GetLastError());
 		MessageBox(NULL, errorMessage.c_str(), L"Certificate checking", MB_OK);
 	}
@@ -1211,15 +1389,15 @@ bool isCertificateValidated(const wstring & fullFilePath, const wstring & subjec
 	return isOK;
 }
 
-bool isAssoCommandExisting(LPCTSTR FullPathName)
+bool isAssoCommandExisting(LPCWSTR FullPathName)
 {
-	bool isAssoCommandExisting = false;
+	bool isAssoCmdExist = false;
 
 	bool isFileExisting = doesFileExist(FullPathName);
 
 	if (isFileExisting)
 	{
-		PTSTR ext = PathFindExtension(FullPathName);
+		PWSTR ext = PathFindExtension(FullPathName);
 
 		HRESULT hres;
 		wchar_t buffer[MAX_PATH] = L"";
@@ -1228,61 +1406,44 @@ bool isAssoCommandExisting(LPCTSTR FullPathName)
 		// check if association exist
 		hres = AssocQueryString(ASSOCF_VERIFY|ASSOCF_INIT_IGNOREUNKNOWN, ASSOCSTR_COMMAND, ext, NULL, buffer, &bufferLen);
 
-        isAssoCommandExisting = (hres == S_OK)                  // check if association exist and no error
-			&& (wcsstr(buffer, L"notepad++.exe")) == NULL; // check association with notepad++
+		isAssoCmdExist = (hres == S_OK)                  // check if association exist and no error
+			&& (wcsstr(buffer, L"notepad++.exe")) == NULL;   // check association with notepad++
 
 	}
-	return isAssoCommandExisting;
-}
-
-std::wstring s2ws(const std::string& str)
-{
-	using convert_typeX = std::codecvt_utf8<wchar_t>;
-	std::wstring_convert<convert_typeX, wchar_t> converterX("Error in Notepad++ string conversion s2ws!", L"Error in Notepad++ string conversion s2ws!");
-
-	return converterX.from_bytes(str);
-}
-
-std::string ws2s(const std::wstring& wstr)
-{
-	using convert_typeX = std::codecvt_utf8<wchar_t>;
-	std::wstring_convert<convert_typeX, wchar_t> converterX("Error in Notepad++ string conversion ws2s!", L"Error in Notepad++ string conversion ws2s!");
-
-	return converterX.to_bytes(wstr);
+	return isAssoCmdExist;
 }
 
 bool deleteFileOrFolder(const wstring& f2delete)
 {
 	auto len = f2delete.length();
-	wchar_t* actionFolder = new wchar_t[len + 2];
-	wcscpy_s(actionFolder, len + 2, f2delete.c_str());
+	auto actionFolder = std::make_unique<wchar_t[]>(len + 2);
+	::wcscpy_s(actionFolder.get(), len + 2, f2delete.c_str());
 	actionFolder[len] = 0;
 	actionFolder[len + 1] = 0;
 
-	SHFILEOPSTRUCT fileOpStruct = {};
-	fileOpStruct.hwnd = NULL;
-	fileOpStruct.pFrom = actionFolder;
-	fileOpStruct.pTo = NULL;
+	SHFILEOPSTRUCT fileOpStruct{};
+	fileOpStruct.hwnd = nullptr;
+	fileOpStruct.pFrom = actionFolder.get();
+	fileOpStruct.pTo = nullptr;
 	fileOpStruct.wFunc = FO_DELETE;
 	fileOpStruct.fFlags = FOF_NOCONFIRMATION | FOF_SILENT | FOF_ALLOWUNDO;
 	fileOpStruct.fAnyOperationsAborted = false;
-	fileOpStruct.hNameMappings = NULL;
-	fileOpStruct.lpszProgressTitle = NULL;
+	fileOpStruct.hNameMappings = nullptr;
+	fileOpStruct.lpszProgressTitle = nullptr;
 
 	int res = SHFileOperation(&fileOpStruct);
 
-	delete[] actionFolder;
 	return (res == 0);
 }
 
-// Get a vector of full file paths in a given folder. File extension type filter should be *.*, *.xml, *.dll... according the type of file you want to get.  
+// Get a vector of full file paths in a given folder. File extension type filter should be *.*, *.xml, *.dll... according to the type of file you want to get.  
 void getFilesInFolder(std::vector<wstring>& files, const wstring& extTypeFilter, const wstring& inFolder)
 {
-	wstring filter = inFolder;
-	pathAppend(filter, extTypeFilter);
+	std::wstring filterPath = inFolder;
+	pathAppend(filterPath, extTypeFilter);
 
 	WIN32_FIND_DATA foundData;
-	HANDLE hFindFile = ::FindFirstFile(filter.c_str(), &foundData);
+	HANDLE hFindFile = ::FindFirstFile(filterPath.c_str(), &foundData);
 	if (hFindFile != INVALID_HANDLE_VALUE)
 	{
 		do
@@ -1337,18 +1498,17 @@ int nbDigitsFromNbLines(size_t nbLines)
 
 namespace
 {
-	constexpr wchar_t timeFmtEscapeChar = 0x1;
-	constexpr wchar_t middayFormat[] = L"tt";
+	static constexpr wchar_t timeFmtEscapeChar = 0x1;
+	static constexpr wchar_t middayFormat[] = L"tt";
 
 	// Returns AM/PM string defined by the system locale for the specified time.
 	// This string may be empty or customized.
 	wstring getMiddayString(const wchar_t* localeName, const SYSTEMTIME& st)
 	{
-		wstring midday;
-		midday.resize(MAX_PATH);
-		int ret = GetTimeFormatEx(localeName, 0, &st, middayFormat, &midday[0], static_cast<int>(midday.size()));
+		std::wstring midday(MAX_PATH, L'\0');
+		const int ret = ::GetTimeFormatEx(localeName, 0, &st, middayFormat, midday.data(), static_cast<int>(midday.size()));
 		if (ret > 0)
-			midday.resize(ret - 1); // Remove the null-terminator.
+			midday.resize(static_cast<size_t>(ret) - 1); // Remove the null-terminator.
 		else
 			midday.clear();
 		return midday;
@@ -1404,7 +1564,7 @@ wstring getDateTimeStrFrom(const wstring& dateTimeFormat, const SYSTEMTIME& st)
 	const wchar_t* localeName = LOCALE_NAME_USER_DEFAULT;
 	const DWORD flags = 0;
 
-	constexpr int bufferSize = MAX_PATH;
+	static constexpr int bufferSize = MAX_PATH;
 	wchar_t buffer[bufferSize] = {};
 	int ret = 0;
 
@@ -1442,20 +1602,15 @@ wstring getDateTimeStrFrom(const wstring& dateTimeFormat, const SYSTEMTIME& st)
 // Don't forget to use DeleteObject(createdFont) before leaving the program
 HFONT createFont(const wchar_t* fontName, int fontSize, bool isBold, HWND hDestParent)
 {
-	HDC hdc = GetDC(hDestParent);
-
 	LOGFONT logFont{};
-	logFont.lfHeight = DPIManagerV2::scaleFont(fontSize, hDestParent);
+	const int fontSizeScaled = DPIManagerV2::scaleFontForFactor(fontSize);
+	logFont.lfHeight = DPIManagerV2::scaleFont(fontSizeScaled, hDestParent);
 	if (isBold)
 		logFont.lfWeight = FW_BOLD;
 
-	wcscpy_s(logFont.lfFaceName, fontName);
+	::wcsncpy_s(logFont.lfFaceName, fontName, size_t{ LF_FACESIZE - 1 });
 
-	HFONT newFont = CreateFontIndirect(&logFont);
-
-	ReleaseDC(hDestParent, hdc);
-
-	return newFont;
+	return ::CreateFontIndirectW(&logFont);
 }
 
 bool removeReadOnlyFlagFromFileAttributes(const wchar_t* fileFullPath)
@@ -1467,6 +1622,49 @@ bool removeReadOnlyFlagFromFileAttributes(const wchar_t* fileFullPath)
 
 	dwFileAttribs &= ~FILE_ATTRIBUTE_READONLY;
 	return (::SetFileAttributes(fileFullPath, dwFileAttribs) != FALSE);
+}
+
+// return false when failed, otherwise true and then the isChangedToReadOnly output will be set
+// accordingly to the changed file R/O-state
+bool toggleReadOnlyFlagFromFileAttributes(const wchar_t* fileFullPath, bool& isChangedToReadOnly)
+{
+	DWORD dwFileAttribs = ::GetFileAttributes(fileFullPath);
+	if (dwFileAttribs == INVALID_FILE_ATTRIBUTES || (dwFileAttribs & FILE_ATTRIBUTE_DIRECTORY))
+		return false;
+
+	if (dwFileAttribs & FILE_ATTRIBUTE_READONLY)
+		dwFileAttribs &= ~FILE_ATTRIBUTE_READONLY;
+	else
+		dwFileAttribs |= FILE_ATTRIBUTE_READONLY;
+	
+	if (::SetFileAttributes(fileFullPath, dwFileAttribs))
+	{
+		isChangedToReadOnly = (dwFileAttribs & FILE_ATTRIBUTE_READONLY) != 0;
+		return true;
+	}
+	else
+	{
+		if (::GetLastError() == ERROR_ACCESS_DENIED)
+		{
+			// try to set elevated
+			// (notepad++.exe #UAC-SETFILEATTRIBUTES# attrib_flags_number_str dest_file_path)
+			wstring strCmdLineParams = NPP_UAC_SETFILEATTRIBUTES_SIGN;
+			strCmdLineParams += L" \"" + to_wstring(dwFileAttribs) + L"\" \"";
+			strCmdLineParams += fileFullPath;
+			strCmdLineParams += L"\"";
+			DWORD dwNppUacOpError = invokeNppUacOp(strCmdLineParams);
+			if (dwNppUacOpError == NO_ERROR)
+			{
+				isChangedToReadOnly = (dwFileAttribs & FILE_ATTRIBUTE_READONLY) != 0;
+				return true;
+			}
+			else
+			{
+				::SetLastError(dwNppUacOpError); // set that as our current thread one for a possible reporting later
+			}
+		}
+		return false;
+	}
 }
 
 // "For file I/O, the "\\?\" prefix to a path string tells the Windows APIs to disable all string parsing
@@ -1536,24 +1734,29 @@ bool isUnsupportedFileName(const wstring& fileName)
 
 			if (!invalidASCIIChar)
 			{
-				// strip input string to a filename without a possible path and extension(s)
+				// strip input string to a filename without a possible path and/or ending dot-char
 				wstring fileNameOnly;
-				size_t pos = fileName.find_first_of(L".");
-				if (pos != std::string::npos)
-					fileNameOnly = fileName.substr(0, pos);
+				if (fileName.ends_with(L'.'))
+					fileNameOnly = fileName.substr(0, fileName.rfind(L"."));
 				else
 					fileNameOnly = fileName;
 
-				pos = fileNameOnly.find_last_of(L"\\");
+				size_t pos = fileNameOnly.find_last_of(L"\\");
 				if (pos == std::string::npos)
 					pos = fileNameOnly.find_last_of(L"/");
 				if (pos != std::string::npos)
 					fileNameOnly = fileNameOnly.substr(pos + 1);
 
-				// upperize because the std::find is case sensitive unlike the Windows OS filesystem
-				std::transform(fileNameOnly.begin(), fileNameOnly.end(), fileNameOnly.begin(), ::towupper);
+				static constexpr size_t maxReservedNameSize = 4;
+				if (fileNameOnly.length() > maxReservedNameSize)
+					return false;
 
-				const std::vector<wstring>  reservedWin32NamespaceDeviceList {
+				// upperize because the std::find is case sensitive unlike the Windows OS filesystem
+				static const auto& loc = std::locale::classic();
+				std::transform(fileNameOnly.begin(), fileNameOnly.end(), fileNameOnly.begin(),
+					[](auto ch) { return std::toupper(ch, loc); });
+
+				const std::vector<std::wstring> reservedWin32NamespaceDeviceList {
 				L"CON", L"PRN", L"AUX", L"NUL",
 				L"COM1", L"COM2", L"COM3", L"COM4", L"COM5", L"COM6", L"COM7", L"COM8", L"COM9",
 				L"LPT1", L"LPT2", L"LPT3", L"LPT4", L"LPT5", L"LPT6", L"LPT7", L"LPT8", L"LPT9"
@@ -1645,12 +1848,12 @@ void Version::setVersionFrom(const wstring& filePath)
 	if (bufferSize <= 0)
 		return;
 
-	unsigned char* buffer = new unsigned char[bufferSize];
-	::GetFileVersionInfo(filePath.c_str(), 0, bufferSize, buffer);
+	auto buffer = std::make_unique<unsigned char[]>(bufferSize);
+	::GetFileVersionInfoW(filePath.c_str(), 0, bufferSize, buffer.get());
 
 	VS_FIXEDFILEINFO* lpFileInfo = nullptr;
 	UINT cbFileInfo = 0;
-	VerQueryValue(buffer, L"\\", reinterpret_cast<LPVOID*>(&lpFileInfo), &cbFileInfo);
+	::VerQueryValueW(buffer.get(), L"\\", reinterpret_cast<LPVOID*>(&lpFileInfo), &cbFileInfo);
 	if (cbFileInfo)
 	{
 		_major = (lpFileInfo->dwFileVersionMS & 0xFFFF0000) >> 16;
@@ -1658,10 +1861,9 @@ void Version::setVersionFrom(const wstring& filePath)
 		_patch = (lpFileInfo->dwFileVersionLS & 0xFFFF0000) >> 16;
 		_build = lpFileInfo->dwFileVersionLS & 0x0000FFFF;
 	}
-	delete[] buffer;
 }
 
-wstring Version::toString()
+wstring Version::toString() const
 {
 	if (_build == 0 && _patch == 0 && _minor == 0 && _major == 0) // ""
 	{
@@ -1735,13 +1937,13 @@ int Version::compareTo(const Version& v2c) const
 
 bool Version::isCompatibleTo(const Version& from, const Version& to) const
 {
-	// This method determinates if Version object is in between "from" version and "to" version, it's useful for testing compatibility of application.
+	// This method determines if Version object is in between "from" version and "to" version, it's useful for testing compatibility of application.
 	// test in versions <from, to> example: 
 	// 1. <0.0.0.0, 0.0.0.0>: both from to versions are empty, so it's 
 	// 2. <6.9, 6.9>: plugin is compatible to only v6.9
 	// 3. <4.2, 6.6.6>: from v4.2 (included) to v6.6.6 (included)
 	// 4. <0.0.0.0, 8.2.1>: all version until v8.2.1 (included)
-	// 5. <8.3, 0.0.0.0>: from v8.3 (included) to the latest verrsion
+	// 5. <8.3, 0.0.0.0>: from v8.3 (included) to the latest version
 	
 	if (empty()) // if this version is empty, then no compatible to all version
 		return false;
@@ -1764,20 +1966,408 @@ bool Version::isCompatibleTo(const Version& from, const Version& to) const
 	return false;
 }
 
-bool doesFileExist(const wchar_t* filePath)
+static constexpr DWORD DEFAULT_MILLISEC = 3000;
+
+//----------------------------------------------------
+
+struct GetDiskFreeSpaceParamResult
 {
-	DWORD dwAttrib = ::GetFileAttributesW(filePath);
-	return (dwAttrib != INVALID_FILE_ATTRIBUTES && !(dwAttrib & FILE_ATTRIBUTE_DIRECTORY));
+	std::wstring _dirPath;
+	ULARGE_INTEGER _freeBytesForUser {};
+	BOOL _result = FALSE;
+	bool _isTimeoutReached = true;
+
+	explicit GetDiskFreeSpaceParamResult(const std::wstring& dirPath) noexcept : _dirPath(dirPath) {}
+};
+
+static DWORD WINAPI getDiskFreeSpaceExWorker(void* data)
+{
+	GetDiskFreeSpaceParamResult* inAndOut = static_cast<GetDiskFreeSpaceParamResult*>(data);
+	inAndOut->_result = ::GetDiskFreeSpaceExW(inAndOut->_dirPath.c_str(), &(inAndOut->_freeBytesForUser), nullptr, nullptr);
+	inAndOut->_isTimeoutReached = false;
+	return ERROR_SUCCESS;
 }
 
-bool doesDirectoryExist(const wchar_t* dirPath)
+BOOL getDiskFreeSpaceWithTimeout(const wchar_t* dirPath, ULARGE_INTEGER* freeBytesForUser, DWORD milliSec2wait, bool* isTimeoutReached)
 {
-	DWORD dwAttrib = ::GetFileAttributesW(dirPath);
-	return (dwAttrib != INVALID_FILE_ATTRIBUTES && (dwAttrib & FILE_ATTRIBUTE_DIRECTORY));
+	GetDiskFreeSpaceParamResult data(dirPath);
+
+	HANDLE hThread = ::CreateThread(NULL, 0, getDiskFreeSpaceExWorker, &data, 0, NULL);
+	if (!hThread)
+	{
+		return FALSE;
+	}
+
+	// wait for our worker thread to complete or terminate it when the required timeout has elapsed
+	DWORD dwWaitStatus = ::WaitForSingleObject(hThread, milliSec2wait == 0 ? DEFAULT_MILLISEC : milliSec2wait);
+	switch (dwWaitStatus)
+	{
+		case WAIT_OBJECT_0: // Ok, the state of our worker thread is signaled, so it finished itself in the timeout given		
+			// - nothing else to do here, except the thread handle closing later
+			break;
+
+		case WAIT_TIMEOUT: // the timeout interval elapsed, but the worker's state is still non-signaled
+		default: // any other dwWaitStatus is a BAD one here
+			// WAIT_FAILED or WAIT_ABANDONED
+			::TerminateThread(hThread, dwWaitStatus);
+			break;
+	}
+	CloseHandle(hThread);
+
+	*freeBytesForUser = data._freeBytesForUser;
+
+	if (isTimeoutReached != nullptr)
+		*isTimeoutReached = data._isTimeoutReached;
+
+	return data._result;
 }
 
-bool doesPathExist(const wchar_t* path)
+
+//----------------------------------------------------
+
+struct GetAttrExParamResult
 {
-	DWORD dwAttrib = ::GetFileAttributesW(path);
-	return (dwAttrib != INVALID_FILE_ATTRIBUTES);
+	wstring _filePath;
+	WIN32_FILE_ATTRIBUTE_DATA _attributes{};
+	BOOL _result = FALSE;
+	DWORD _error = NO_ERROR;
+	bool _isTimeoutReached = true;
+
+	explicit GetAttrExParamResult(const std::wstring& filePath) noexcept : _filePath(filePath) {
+		_attributes.dwFileAttributes = INVALID_FILE_ATTRIBUTES;
+	}
+};
+
+static DWORD WINAPI getFileAttributesExWorker(void* data)
+{
+	GetAttrExParamResult* inAndOut = static_cast<GetAttrExParamResult*>(data);
+	::SetLastError(NO_ERROR);
+	inAndOut->_result = ::GetFileAttributesExW(inAndOut->_filePath.c_str(), GetFileExInfoStandard, &(inAndOut->_attributes));
+	if (!(inAndOut->_result))
+		inAndOut->_error = ::GetLastError();
+	inAndOut->_isTimeoutReached = false;
+	return ERROR_SUCCESS;
+}
+
+BOOL getFileAttributesExWithTimeout(const wchar_t* filePath, WIN32_FILE_ATTRIBUTE_DATA* fileAttr,
+	DWORD milliSec2wait, bool* isTimeoutReached, DWORD* pdwWin32ApiError)
+{
+	GetAttrExParamResult data(filePath);
+
+	HANDLE hThread = ::CreateThread(NULL, 0, getFileAttributesExWorker, &data, 0, NULL);
+	if (!hThread)
+	{
+		return FALSE;
+	}
+
+	// wait for our worker thread to complete or terminate it when the required timeout has elapsed
+	DWORD dwWaitStatus = ::WaitForSingleObject(hThread, milliSec2wait == 0 ? DEFAULT_MILLISEC : milliSec2wait);
+	switch (dwWaitStatus)
+	{
+		case WAIT_OBJECT_0: // Ok, the state of our worker thread is signaled, so it finished itself in the timeout given		
+			// - nothing else to do here, except the thread handle closing later
+			break;
+
+		case WAIT_TIMEOUT: // the timeout interval elapsed, but the worker's state is still non-signaled
+		default: // any other dwWaitStatus is a BAD one here
+			// WAIT_FAILED or WAIT_ABANDONED
+			::TerminateThread(hThread, dwWaitStatus);
+			break;
+	}
+	::CloseHandle(hThread);
+
+	*fileAttr = data._attributes;
+
+	if (isTimeoutReached != nullptr)
+		*isTimeoutReached = data._isTimeoutReached;
+
+	if (pdwWin32ApiError != nullptr)
+		*pdwWin32ApiError = data._error;
+
+	return data._result;
+}
+
+bool doesFileExist(const wchar_t* filePath, DWORD milliSec2wait, bool* isTimeoutReached)
+{
+	WIN32_FILE_ATTRIBUTE_DATA attributes{};
+	attributes.dwFileAttributes = INVALID_FILE_ATTRIBUTES;
+	getFileAttributesExWithTimeout(filePath, &attributes, milliSec2wait, isTimeoutReached);
+	return (attributes.dwFileAttributes != INVALID_FILE_ATTRIBUTES && !(attributes.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY));
+}
+
+bool doesDirectoryExist(const wchar_t* dirPath, DWORD milliSec2wait, bool* isTimeoutReached)
+{
+	WIN32_FILE_ATTRIBUTE_DATA attributes{};
+	attributes.dwFileAttributes = INVALID_FILE_ATTRIBUTES;
+	getFileAttributesExWithTimeout(dirPath, &attributes, milliSec2wait, isTimeoutReached);
+	return (attributes.dwFileAttributes != INVALID_FILE_ATTRIBUTES && (attributes.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY));
+}
+
+bool doesPathExist(const wchar_t* path, DWORD milliSec2wait, bool* isTimeoutReached)
+{
+	WIN32_FILE_ATTRIBUTE_DATA attributes{};
+	attributes.dwFileAttributes = INVALID_FILE_ATTRIBUTES;
+	getFileAttributesExWithTimeout(path, &attributes, milliSec2wait, isTimeoutReached);
+	return (attributes.dwFileAttributes != INVALID_FILE_ATTRIBUTES);
+}
+
+#if defined(__GNUC__) && __GNUC__ > 8
+#define WINAPI_LAMBDA_RETURN(return_t) -> return_t WINAPI
+#elif defined(__GNUC__)
+#define WINAPI_LAMBDA_RETURN(return_t) WINAPI -> return_t
+#else
+#define WINAPI_LAMBDA_RETURN(return_t) -> return_t
+#endif
+
+// check if the window rectangle intersects with any currently active monitor's working area
+// (this func handles also possible extended monitors mode aka the MS Virtual Screen)
+bool isWindowVisibleOnAnyMonitor(const RECT& rectWndIn)
+{
+	struct Param4InOut
+	{
+		const RECT& rectWndIn;
+		bool isWndVisibleOut = false;
+	};
+
+	// callback func to check for intersection with each existing monitor
+	auto callback = []([[maybe_unused]] HMONITOR hMon, [[maybe_unused]] HDC hdc, LPRECT lprcMon, LPARAM lpInOut) WINAPI_LAMBDA_RETURN(BOOL)
+	{
+		Param4InOut* paramInOut = reinterpret_cast<Param4InOut*>(lpInOut);
+		RECT rectIntersection{};
+		if (::IntersectRect(&rectIntersection, &(paramInOut->rectWndIn), lprcMon))
+		{
+			paramInOut->isWndVisibleOut = true; // the window is at least partially visible on this monitor
+			return FALSE; // ok, stop the enumeration
+		}
+		return TRUE; // continue enumeration as no intersection yet
+	};
+
+	// get scaled Virtual Screen size (scaled coordinates are saved by the Notepad++ into config.xml)
+	// - for unscaled, one has to 1st set the SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) & then use GetSystemMetricsForDpi with 96
+	// - for getting the VS RECT, we cannot use here the SystemParametersInfo with SPI_GETWORKAREA!
+	//   (while the SPI_SETWORKAREA is working with the VS coordinates the SPI_GETWORKAREA not...)
+	RECT rectVirtualScreen{ ::GetSystemMetrics(SM_XVIRTUALSCREEN), ::GetSystemMetrics(SM_YVIRTUALSCREEN),
+		::GetSystemMetrics(SM_CXVIRTUALSCREEN), ::GetSystemMetrics(SM_CYVIRTUALSCREEN) }; 
+
+	// 1) Before checking for intersections with individual monitors, we verify if the window's rectangle
+	//    is within the MS Virtual Screen area. If it is outside, this func exits with false early,
+	//    as the window in question cannot be visible on any individual monitor present.
+	RECT rectIntersection{};
+	if (!::IntersectRect(&rectIntersection, &rectWndIn, &rectVirtualScreen))
+	{
+		// the window in question is completely outside the overall Virtual Screen bounds
+		return false;
+	}
+
+	// 2) Using the EnumDisplayMonitors WINAPI to check each present monitor's visible area, we ensure that we are only looking
+	//    at monitors that are part of the Virtual Screen but not at Virtual Space coordinates where is NOT a monitor present.
+	Param4InOut param4InOut{ rectWndIn, false };
+	::EnumDisplayMonitors(NULL, &rectVirtualScreen, callback, reinterpret_cast<LPARAM>(&param4InOut));
+	return param4InOut.isWndVisibleOut;
+}
+
+#if defined(_MSC_VER)
+#pragma warning(disable:4996) // 'GetVersionExW': was declared deprecated
+#endif
+
+bool isCoreWindows()
+{
+	bool isCoreWindows = false;
+
+	// older Windows (Windows Server 2008 R2-) check 1st
+	OSVERSIONINFOEXW osviex{};
+	osviex.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEXW);
+	if (::GetVersionEx(reinterpret_cast<LPOSVERSIONINFOW>(&osviex)))
+	{
+		DWORD dwReturnedProductType = 0;
+		if (::GetProductInfo(osviex.dwMajorVersion, osviex.dwMinorVersion, osviex.wServicePackMajor, osviex.wServicePackMinor, &dwReturnedProductType))
+		{
+			switch (dwReturnedProductType)
+			{
+				case PRODUCT_STANDARD_SERVER_CORE:
+				case PRODUCT_STANDARD_A_SERVER_CORE:
+				case PRODUCT_STANDARD_SERVER_CORE_V:
+				case PRODUCT_STANDARD_SERVER_SOLUTIONS_CORE:
+				case PRODUCT_SMALLBUSINESS_SERVER_PREMIUM_CORE:
+				case PRODUCT_ENTERPRISE_SERVER_CORE:
+				case PRODUCT_ENTERPRISE_SERVER_CORE_V:
+				case PRODUCT_DATACENTER_SERVER_CORE:
+				case PRODUCT_DATACENTER_A_SERVER_CORE:
+				case PRODUCT_DATACENTER_SERVER_CORE_V:
+				case PRODUCT_STORAGE_STANDARD_SERVER_CORE:
+				case PRODUCT_STORAGE_WORKGROUP_SERVER_CORE:
+				case PRODUCT_STORAGE_ENTERPRISE_SERVER_CORE:
+				case PRODUCT_STORAGE_EXPRESS_SERVER_CORE:
+				case PRODUCT_WEB_SERVER_CORE:
+					isCoreWindows = true;
+			}
+		}
+	}
+
+	if (!isCoreWindows)
+	{
+		// in Core Server 2012+, the recommended way to determine is via the Registry
+		HKEY hKey = nullptr;
+		if (::RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion",
+			0, KEY_READ, &hKey) == ERROR_SUCCESS)
+		{
+			static constexpr size_t bufLen = 127;
+			wchar_t wszBuf[bufLen + 1]{}; // +1 ... to be always NULL-terminated string
+			DWORD dataSize = sizeof(wchar_t) * bufLen;
+			if (::RegQueryValueExW(hKey, L"InstallationType", nullptr, nullptr, reinterpret_cast<LPBYTE>(&wszBuf), &dataSize) == ERROR_SUCCESS)
+			{
+				if (lstrcmpiW(wszBuf, L"Server Core") == 0)
+					isCoreWindows = true;
+			}
+			::RegCloseKey(hKey);
+			hKey = nullptr;
+		}
+	}
+
+	return isCoreWindows;
+}
+
+bool ControlInfoTip::init(HINSTANCE hInst, HWND ctrl2attached, HWND ctrl2attachedParent, const wstring& tipStr, bool isRTL, unsigned int remainTimeMillisecond /* = 0 */, int maxWidth /* = 200 */)
+{
+	_hWndInfoTip = CreateWindowEx(isRTL ? WS_EX_LAYOUTRTL : 0, TOOLTIPS_CLASS, NULL,
+		WS_POPUP | TTS_ALWAYSTIP | TTS_BALLOON,
+		CW_USEDEFAULT, CW_USEDEFAULT,
+		CW_USEDEFAULT, CW_USEDEFAULT,
+		ctrl2attachedParent, NULL,
+		hInst, NULL);
+
+	if (!_hWndInfoTip)
+		return false;
+
+	_toolInfo.cbSize = sizeof(_toolInfo);
+	_toolInfo.hwnd = ctrl2attachedParent;
+	_toolInfo.uFlags = TTF_IDISHWND | TTF_TRACK;
+	_toolInfo.uId = reinterpret_cast<UINT_PTR>(ctrl2attached);
+	_toolInfo.lpszText = const_cast<PWSTR>(tipStr.data());
+
+	if (::SendMessage(_hWndInfoTip, TTM_ADDTOOL, 0, reinterpret_cast<LPARAM>(&_toolInfo)) == FALSE)
+	{
+		::DestroyWindow(_hWndInfoTip);
+		_hWndInfoTip = nullptr;
+		return false;
+	}
+
+	SendMessage(_hWndInfoTip, TTM_SETMAXTIPWIDTH, 0, maxWidth);
+	SendMessage(_hWndInfoTip, TTM_ACTIVATE, TRUE, 0);
+
+	if (remainTimeMillisecond)
+		SetTimer(ctrl2attachedParent, IDT_HIDE_TOOLTIP, remainTimeMillisecond, NULL);
+
+	return true;
+}
+
+void ControlInfoTip::show(showPosition pos) const
+{
+	if (!isValid())	return;
+
+	RECT rcComboBox;
+	GetWindowRect(reinterpret_cast<HWND>(_toolInfo.uId), &rcComboBox);
+
+	int xPos = 0;
+
+	if (pos == beginning)
+		xPos = rcComboBox.left + 15;
+	else if (pos == middle)
+		xPos = rcComboBox.left + (rcComboBox.right - rcComboBox.left) / 2;
+	else // (pos == end)
+		xPos = rcComboBox.left + (rcComboBox.right - rcComboBox.left) - 15;
+
+	int yPos = rcComboBox.top + 25;
+
+	SendMessage(_hWndInfoTip, TTM_TRACKPOSITION, 0, MAKELPARAM(xPos, yPos));
+	::SendMessage(_hWndInfoTip, TTM_TRACKACTIVATE, TRUE, reinterpret_cast<LPARAM>(&_toolInfo));
+}
+
+void ControlInfoTip::hide()
+{
+	if (_hWndInfoTip)
+	{
+		::SendMessage(_hWndInfoTip, TTM_TRACKACTIVATE, FALSE, reinterpret_cast<LPARAM>(&_toolInfo));
+		DestroyWindow(_hWndInfoTip);
+		_hWndInfoTip = nullptr;
+	}
+}
+
+#if defined(_MSC_VER)
+#pragma warning(default:4996)
+#endif
+
+DWORD invokeNppUacOp(const std::wstring& strCmdLineParams)
+{
+	if ((strCmdLineParams.length() == 0) || (strCmdLineParams.length() > (USHRT_MAX / sizeof(WCHAR))))
+	{
+		// no cmdline or it exceeds the current max WinOS 32767 WCHARs
+		return ERROR_INVALID_PARAMETER;
+	}
+
+	wchar_t wszNppFullPath[MAX_PATH]{};
+	::SetLastError(NO_ERROR);
+	if (!::GetModuleFileName(NULL, wszNppFullPath, MAX_PATH) || (::GetLastError() == ERROR_INSUFFICIENT_BUFFER))
+	{
+		return ::GetLastError();
+	}
+
+	SHELLEXECUTEINFOW sei{};
+	sei.cbSize = sizeof(SHELLEXECUTEINFOW);
+	sei.lpVerb = L"runas"; // UAC prompt
+	sei.nShow = SW_SHOWNORMAL;
+	sei.fMask = SEE_MASK_NOCLOSEPROCESS; // sei.hProcess member receives the launched process handle
+	sei.lpFile = wszNppFullPath;
+	sei.lpParameters = strCmdLineParams.c_str();
+	if (!::ShellExecuteExW(&sei))
+		return ::GetLastError();
+
+	// wait for the elevated Notepad++ process to finish
+	DWORD dwError = NO_ERROR;
+	if (sei.hProcess) // beware - do not check here for the INVALID_HANDLE_VALUE (valid GetCurrentProcess() pseudohandle)
+	{
+		::WaitForSingleObject(sei.hProcess, INFINITE);
+		::GetExitCodeProcess(sei.hProcess, &dwError);
+		::CloseHandle(sei.hProcess);
+	}
+
+	return dwError;
+}
+
+bool fileTimeToYMD(const FILETIME& ft, int& yyyymmdd)
+{
+	SYSTEMTIME stUtc;
+	SYSTEMTIME stLocal;
+
+	if (!FileTimeToSystemTime(&ft, &stUtc))
+		return false;
+
+	if (!SystemTimeToTzSpecificLocalTime(NULL, &stUtc, &stLocal))
+		return false;
+
+	yyyymmdd = (stLocal.wYear * 10000) + (stLocal.wMonth * 100) + stLocal.wDay;
+
+	return true;
+}
+
+void expandEnv(wstring& path2Expand)
+{
+	wchar_t buffer[MAX_PATH] = { '\0' };
+	// This returns the resulting string length or 0 in case of error.
+	DWORD ret = ::ExpandEnvironmentStringsW(path2Expand.c_str(), buffer, static_cast<DWORD>(std::size(buffer)));
+	if (ret != 0)
+	{
+		if (ret == static_cast<DWORD>(lstrlen(buffer) + 1))
+		{
+			path2Expand = buffer;
+		}
+		else
+		{
+			// Buffer was too small, try with a bigger buffer of the required size.
+			std::vector<wchar_t> buffer2(ret, 0);
+			ret = ::ExpandEnvironmentStringsW(path2Expand.c_str(), buffer2.data(), static_cast<DWORD>(buffer2.size()));
+			assert(ret == static_cast<DWORD>(lstrlen(buffer2.data()) + 1));
+			path2Expand = buffer2.data();
+		}
+	}
 }

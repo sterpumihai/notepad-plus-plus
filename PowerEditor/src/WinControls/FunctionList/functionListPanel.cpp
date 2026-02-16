@@ -115,7 +115,7 @@ size_t FunctionListPanel::getBodyClosePos(size_t begin, const wchar_t *bodyOpenS
 		{
 			targetEnd = (*_ppEditView)->execute(SCI_GETTARGETEND);
 
-			// Now we determinate the symbol (open or close)
+			// Now we determine the symbol (open or close)
 			intptr_t tmpStart = (*_ppEditView)->searchInTarget(bodyOpenSymbol, lstrlen(bodyOpenSymbol), targetStart, targetEnd);
 			if (tmpStart >= 0) // open symbol found
 			{
@@ -192,6 +192,7 @@ void FunctionListPanel::addInStateArray(TreeStateNode tree2Update, const wchar_t
 			found = true;
 		}
 	}
+
 	if (!found)
 	{
 		TreeParams params;
@@ -300,12 +301,12 @@ bool FunctionListPanel::serialize(const wstring & outputFilename)
 
 	for (const auto & info : _foundFuncInfos)
 	{
-		std::string leafName = wmc.wchar2char(info._data.c_str(), CP_ACP);
+		std::string leafName = info._data.c_str();
 
 		if (!info._data2.empty()) // node
 		{
 			bool isFound = false;
-			std::string nodeName = wmc.wchar2char(info._data2.c_str(), CP_ACP);
+			std::string nodeName = info._data2.c_str();
 
 			for (auto & i : j[nodesLabel])
 			{
@@ -366,7 +367,7 @@ void FunctionListPanel::reload()
 	Buffer* currentBuf = (*_ppEditView)->getCurrentBuffer();
 	const wchar_t *fn = currentBuf->getFileName();
 	LangType langID = currentBuf->getLangType();
-	if (langID == L_JS)
+	if (langID == L_JS_EMBEDDED)
 		langID = L_JAVASCRIPT;
 
 	const wchar_t *udln = NULL;
@@ -389,7 +390,7 @@ void FunctionListPanel::reload()
 
 	for (size_t i = 0, len = _foundFuncInfos.size(); i < len; ++i)
 	{
-		addEntry(_foundFuncInfos[i]._data2.c_str(), _foundFuncInfos[i]._data.c_str(), _foundFuncInfos[i]._pos);
+		addEntry(string2wstring(_foundFuncInfos[i]._data2).c_str(), string2wstring(_foundFuncInfos[i]._data).c_str(), _foundFuncInfos[i]._pos);
 	}
 
 	HTREEITEM root = _treeView.getRoot();
@@ -440,7 +441,7 @@ void FunctionListPanel::initPreferencesMenu()
 	NativeLangSpeaker* pNativeSpeaker = NppParameters::getInstance().getNativeLangSpeaker();
 	const NppGUI& nppGUI = NppParameters::getInstance().getNppGUI();
 
-	wstring shouldSortFunctionListStr = pNativeSpeaker->getAttrNameStr(L"Sort functions (A to Z) by default", FL_FUCTIONLISTROOTNODE, FL_PREFERENCE_INITIALSORT);
+	wstring shouldSortFunctionListStr = pNativeSpeaker->getAttrNameStr(L"Sort functions (A to Z) by default", FL_FUNCTIONLISTROOTNODE, FL_PREFERENCE_INITIALSORT);
 
 	_hPreferencesMenu = ::CreatePopupMenu();
 	::InsertMenu(_hPreferencesMenu, 0, MF_BYCOMMAND, FL_PREFERENCES_INITIALSORT_ID, shouldSortFunctionListStr.c_str());
@@ -812,7 +813,7 @@ intptr_t CALLBACK FunctionListPanel::run_dlgProc(UINT message, WPARAM wParam, LP
 			{
 				if (textFound)
 				{
-					return NppDarkMode::onCtlColorSofter(hdc);
+					return NppDarkMode::onCtlColorCtrl(hdc);
 				}
 				else // text not found
 				{
@@ -852,8 +853,7 @@ intptr_t CALLBACK FunctionListPanel::run_dlgProc(UINT message, WPARAM wParam, LP
 			const DWORD tbExStyle = static_cast<DWORD>(::SendMessage(_hToolbarMenu, TB_GETEXTENDEDSTYLE, 0, 0));
 			::SendMessage(_hToolbarMenu, TB_SETEXTENDEDSTYLE, 0, tbExStyle | TBSTYLE_EX_DOUBLEBUFFER);
 
-			constexpr UINT_PTR idSubclassFunclstToolbar = 2;
-			::SetWindowSubclass(_hToolbarMenu, funclstToolbarProc, idSubclassFunclstToolbar, 0);
+			::SetWindowSubclass(_hToolbarMenu, funclstToolbarProc, static_cast<UINT_PTR>(SubclassID::first), 0);
 
 			const int iconSizeDyn = _dpiManager.scale(16);
 			constexpr int nbIcons = 3;
@@ -920,17 +920,16 @@ intptr_t CALLBACK FunctionListPanel::run_dlgProc(UINT message, WPARAM wParam, LP
 
 			// tips text for toolbar buttons
 			NativeLangSpeaker *pNativeSpeaker = nppParam.getNativeLangSpeaker();
-			_sortTipStr = pNativeSpeaker->getAttrNameStr(_sortTipStr.c_str(), FL_FUCTIONLISTROOTNODE, FL_SORTLOCALNODENAME);
-			_reloadTipStr = pNativeSpeaker->getAttrNameStr(_reloadTipStr.c_str(), FL_FUCTIONLISTROOTNODE, FL_RELOADLOCALNODENAME);
-			_preferenceTipStr = pNativeSpeaker->getAttrNameStr(_preferenceTipStr.c_str(), FL_FUCTIONLISTROOTNODE, FL_PREFERENCESLOCALNODENAME);
+			_sortTipStr = pNativeSpeaker->getAttrNameStr(_sortTipStr.c_str(), FL_FUNCTIONLISTROOTNODE, FL_SORTLOCALNODENAME);
+			_reloadTipStr = pNativeSpeaker->getAttrNameStr(_reloadTipStr.c_str(), FL_FUNCTIONLISTROOTNODE, FL_RELOADLOCALNODENAME);
+			_preferenceTipStr = pNativeSpeaker->getAttrNameStr(_preferenceTipStr.c_str(), FL_FUNCTIONLISTROOTNODE, FL_PREFERENCESLOCALNODENAME);
 
 			_hSearchEdit = CreateWindowEx(WS_EX_CLIENTEDGE, WC_EDIT, NULL,
 								WS_CHILD | WS_VISIBLE | ES_AUTOVSCROLL,
 								2, 2, editWidth, editHeight,
 								_hToolbarMenu, reinterpret_cast<HMENU>(IDC_SEARCHFIELD_FUNCLIST), _hInst, 0 );
 
-			constexpr UINT_PTR idSubclassFunclstSearchEdit = 3;
-			::SetWindowSubclass(_hSearchEdit, funclstSearchEditProc, idSubclassFunclstSearchEdit, 0);
+			::SetWindowSubclass(_hSearchEdit, funclstSearchEditProc, static_cast<UINT_PTR>(SubclassID::first), 0);
 
 			if (_hFontSearchEdit == nullptr)
 			{

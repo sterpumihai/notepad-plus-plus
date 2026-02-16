@@ -173,6 +173,16 @@ SectionGroup "Auto-completion Files" autoCompletionComponent
 		File ".\APIs\raku.xml"
 	${MementoSectionEnd}
 
+	${MementoSection} "SAS" SAS
+		SetOutPath "$INSTDIR\autoCompletion"
+		File ".\APIs\sas.xml"
+	${MementoSectionEnd}
+
+	${MementoSection} "Rust" Rust
+		SetOutPath "$INSTDIR\autoCompletion"
+		File ".\APIs\rust.xml"
+	${MementoSectionEnd}
+
 SectionGroupEnd
 
 
@@ -300,6 +310,14 @@ SectionGroup un.autoCompletionComponent
 
 	Section un.Raku
 		Delete "$INSTDIR\autoCompletion\raku.xml"
+	SectionEnd
+
+	Section un.SAS
+		Delete "$INSTDIR\autoCompletion\sas.xml"
+	SectionEnd
+	
+	Section un.Rust
+		Delete "$INSTDIR\autoCompletion\rust.xml"
 	SectionEnd
 
 SectionGroupEnd
